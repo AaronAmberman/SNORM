@@ -9,6 +9,8 @@ namespace SNORM
     /// <summary>A simple SQL class that provides ExecuteNonQuery (for non-SELECT statements) and ExecuteQuery (for SELECT statements).</summary>
     public static class SimpleSqlService
     {
+        #region Properties 
+
         /// <summary>Gets or sets whether or not to automatically connect and disconnect on each method call. Default is true.</summary>
         public static bool AutoConnect { get; set; } = true;
 
@@ -17,6 +19,10 @@ namespace SNORM
 
         /// <summary>Gets or sets the SQL connection.</summary>
         public static SqlConnection Connection { get; set; }
+
+        #endregion
+
+        #region Methods
 
         private static void DefaultLogging(string entry)
         {
@@ -157,5 +163,7 @@ namespace SNORM
                 return null;
             }
         }
+
+        #endregion
     }
 }
