@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Data;
 using System.Data.SqlClient;
 using System.Diagnostics;
@@ -91,7 +92,70 @@ namespace SNORM
         /// <returns>The results or null if an error occured.</returns>
         public static object[][] ExecuteQuery(string query, CommandType commandType, params SqlParameter[] parameters)
         {
-            return null;
+            try
+            {
+                if (Connection == null)
+                {
+                    Log("The connection is null and this cannot be, please set the Connection property.");
+
+                    return null;
+                }
+
+                if (Connection.State == ConnectionState.Connecting || Connection.State == ConnectionState.Executing || Connection.State == ConnectionState.Fetching)
+                {
+                    Log("The connection is currently busy either connecting, executing or fetching. Failure.");
+
+                    return null;
+                }
+
+                if (AutoConnect)
+                {
+                    if (Connection.State == ConnectionState.Closed)
+                        Connection.Open();
+                }
+
+                SqlCommand command = new SqlCommand(query, Connection)
+                {
+                    CommandType = commandType
+                };
+
+                if (parameters.Length > 0)
+                    command.Parameters.AddRange(parameters);
+
+                SqlDataReader reader = command.ExecuteReader();
+
+                List<object[]> rows = new List<object[]>();
+
+                if (reader.HasRows)
+                {
+                    while(reader.Read())
+                    {
+                        object[] row = new object[reader.FieldCount];
+
+                        for(int i = 0; i < reader.FieldCount; i++)
+                        {
+                            object value = reader.GetValue(i);
+
+                            value = value == DBNull.Value ? null : value;
+                        }
+
+                        rows.Add(row);
+                    }
+
+                    reader.Close();
+                }
+
+                if (AutoConnect)
+                    Connection.Close();
+
+                return rows.ToArray();
+            }
+            catch(Exception ex)
+            {
+                Log($"An error occurred attempting to run ExecuteQuery...{Environment.NewLine}{ex}");
+
+                return null;
+            }
         }
     }
 }
