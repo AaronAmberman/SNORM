@@ -29,11 +29,11 @@ namespace SNORM
             Debug.WriteLine(entry);
         }
 
-        /// <summary>Executes a Transact-SQL statement against the connection and returns the number of rows affected or -1 if an error occured.</summary>
+        /// <summary>Executes a Transact-SQL statement against the connection and returns the number of rows affected or -1 if an error occurred.</summary>
         /// <param name="query">The Transact-SQL statement to execute.</param>
         /// <param name="commandType">The type of command.</param>
         /// <param name="parameters">Parameters, if any, for the Transact-SQL statement.</param>
-        /// <returns>The number of rows affected or -1 if an error occured.</returns>
+        /// <returns>The number of rows affected or -1 if an error occurred.</returns>
         public static int ExecuteNonQuery(string query, CommandType commandType, params SqlParameter[] parameters)
         {
             int returnValue = -1;
@@ -80,7 +80,7 @@ namespace SNORM
             {
                 transaction?.Rollback();
 
-                Log($"An error occurred attempting to run ExecuteNonQuery...{Environment.NewLine}{ex}");
+                Log($"An error occurred during ExecuteNonQuery...{Environment.NewLine}{ex}");
             }
 
             transaction?.Dispose();
@@ -91,11 +91,11 @@ namespace SNORM
             return returnValue;
         }
 
-        /// <summary>Executes a Transact-SQL statement against the connection and returns the results or null if an error occured.</summary>
+        /// <summary>Executes a Transact-SQL statement against the connection and returns the results or null if an error occurred.</summary>
         /// <param name="query">The Transact-SQL statement to execute.</param>
         /// <param name="commandType">The type of command.</param>
         /// <param name="parameters">Parameters, if any, for the Transact-SQL statement.</param>
-        /// <returns>The results or null if an error occured.</returns>
+        /// <returns>The results or null if an error occurred.</returns>
         public static object[][] ExecuteQuery(string query, CommandType commandType, params SqlParameter[] parameters)
         {
             try
@@ -158,7 +158,7 @@ namespace SNORM
             }
             catch(Exception ex)
             {
-                Log($"An error occurred attempting to run ExecuteQuery...{Environment.NewLine}{ex}");
+                Log($"An error occurred during ExecuteQuery...{Environment.NewLine}{ex}");
 
                 return null;
             }
