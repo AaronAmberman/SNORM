@@ -2,39 +2,23 @@
 using System.Collections.Generic;
 using System.Data;
 using System.Data.SqlClient;
-using System.Diagnostics;
 
 namespace SNORM
 {
     /// <summary>A simple SQL class that provides ExecuteNonQuery (for non-SELECT statements) and ExecuteQuery (for SELECT statements).</summary>
     public static class SimpleSqlService
     {
-        #region Properties 
-
-        /// <summary>Gets or sets whether or not to automatically connect and disconnect on each method call. Default is true.</summary>
-        public static bool AutoConnect { get; set; } = true;
-
-        /// <summary>Gets or sets the method to call for logging (only errors are logged).</summary>
-        public static Action<string> Log { get; set; } = DefaultLogging;
-
-        /// <summary>Gets or sets the SQL connection.</summary>
-        public static SqlConnection Connection { get; set; }
-
-        #endregion
-
         #region Methods
 
-        private static void DefaultLogging(string entry)
-        {
-            Debug.WriteLine(entry);
-        }
-
         /// <summary>Executes a Transact-SQL statement against the connection and returns the number of rows affected or -1 if an error occurred.</summary>
+        /// <param name="connection">The connection to the database.</param>
+        /// <param name="autoConnect">Whether or not this method manages the state of the connection (e.g. opens the connection then closes it).</param>
+        /// <param name="log">The method to call to write log messages to (only errors are logged).</param>
         /// <param name="query">The Transact-SQL statement to execute.</param>
         /// <param name="commandType">The type of command.</param>
         /// <param name="parameters">Parameters, if any, for the Transact-SQL statement.</param>
         /// <returns>The number of rows affected or -1 if an error occurred.</returns>
-        public static int ExecuteNonQuery(string query, CommandType commandType, params SqlParameter[] parameters)
+        public static int ExecuteNonQuery(SqlConnection connection, bool autoConnect, Action<string> log, string query, CommandType commandType, params SqlParameter[] parameters)
         {
             int returnValue = -1;
 
@@ -42,29 +26,29 @@ namespace SNORM
 
             try
             {
-                if (Connection == null)
+                if (connection == null)
                 {
-                    Log("The connection is null and this cannot be, please set the Connection property.");
+                    log("The connection is null and this cannot be, please set the connection property.");
 
                     return returnValue;
                 }
 
-                if (Connection.State == ConnectionState.Connecting || Connection.State == ConnectionState.Executing || Connection.State == ConnectionState.Fetching)
+                if (connection.State == ConnectionState.Connecting || connection.State == ConnectionState.Executing || connection.State == ConnectionState.Fetching)
                 {
-                    Log("The connection is currently busy either connecting, executing or fetching. Failure.");
+                    log("The connection is currently busy either connecting, executing or fetching. Failure.");
 
                     return returnValue;
                 }
 
-                if (AutoConnect)
+                if (autoConnect)
                 {
-                    if (Connection.State == ConnectionState.Closed)
-                        Connection.Open();
+                    if (connection.State == ConnectionState.Closed)
+                        connection.Open();
                 }
 
-                transaction = Connection.BeginTransaction();
+                transaction = connection.BeginTransaction();
 
-                SqlCommand command = new SqlCommand(query, Connection, transaction)
+                SqlCommand command = new SqlCommand(query, connection, transaction)
                 {
                     CommandType = commandType
                 };
@@ -80,47 +64,50 @@ namespace SNORM
             {
                 transaction?.Rollback();
 
-                Log($"An error occurred during ExecuteNonQuery...{Environment.NewLine}{ex}");
+                log($"An error occurred during ExecuteNonQuery...{Environment.NewLine}{ex}");
             }
 
             transaction?.Dispose();
 
-            if (AutoConnect)
-                Connection.Close();
+            if (autoConnect)
+                connection.Close();
 
             return returnValue;
         }
 
         /// <summary>Executes a Transact-SQL statement against the connection and returns the results or null if an error occurred.</summary>
+        /// <param name="connection">The connection to the database.</param>
+        /// <param name="autoConnect">Whether or not this method manages the state of the connection (e.g. opens the connection then closes it).</param>
+        /// <param name="log">The method to call to write log messages to (only errors are logged).</param>
         /// <param name="query">The Transact-SQL statement to execute.</param>
         /// <param name="commandType">The type of command.</param>
         /// <param name="parameters">Parameters, if any, for the Transact-SQL statement.</param>
         /// <returns>The results or null if an error occurred.</returns>
-        public static object[][] ExecuteQuery(string query, CommandType commandType, params SqlParameter[] parameters)
+        public static object[][] ExecuteQuery(SqlConnection connection, bool autoConnect, Action<string> log, string query, CommandType commandType, params SqlParameter[] parameters)
         {
             try
             {
-                if (Connection == null)
+                if (connection == null)
                 {
-                    Log("The connection is null and this cannot be, please set the Connection property.");
+                    log("The connection is null and this cannot be, please set the connection property.");
 
                     return null;
                 }
 
-                if (Connection.State == ConnectionState.Connecting || Connection.State == ConnectionState.Executing || Connection.State == ConnectionState.Fetching)
+                if (connection.State == ConnectionState.Connecting || connection.State == ConnectionState.Executing || connection.State == ConnectionState.Fetching)
                 {
-                    Log("The connection is currently busy either connecting, executing or fetching. Failure.");
+                    log("The connection is currently busy either connecting, executing or fetching. Failure.");
 
                     return null;
                 }
 
-                if (AutoConnect)
+                if (autoConnect)
                 {
-                    if (Connection.State == ConnectionState.Closed)
-                        Connection.Open();
+                    if (connection.State == ConnectionState.Closed)
+                        connection.Open();
                 }
 
-                SqlCommand command = new SqlCommand(query, Connection)
+                SqlCommand command = new SqlCommand(query, connection)
                 {
                     CommandType = commandType
                 };
@@ -143,6 +130,8 @@ namespace SNORM
                             object value = reader.GetValue(i);
 
                             value = value == DBNull.Value ? null : value;
+
+                            row[i] = value;
                         }
 
                         rows.Add(row);
@@ -151,14 +140,14 @@ namespace SNORM
                     reader.Close();
                 }
 
-                if (AutoConnect)
-                    Connection.Close();
+                if (autoConnect)
+                    connection.Close();
 
                 return rows.ToArray();
             }
             catch(Exception ex)
             {
-                Log($"An error occurred during ExecuteQuery...{Environment.NewLine}{ex}");
+                log($"An error occurred during ExecuteQuery...{Environment.NewLine}{ex}");
 
                 return null;
             }
