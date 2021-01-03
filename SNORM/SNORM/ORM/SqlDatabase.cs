@@ -427,6 +427,8 @@ namespace SNORM.ORM
                 transaction?.Rollback();
 
                 Log($"An error occurred during Insert...{Environment.NewLine}{ex}");
+
+                returnValue = -1;
             }
 
             transaction?.Dispose();
@@ -588,6 +590,8 @@ namespace SNORM.ORM
                 transaction?.Rollback();
 
                 Log($"An error occurred during Update...{Environment.NewLine}{ex}");
+
+                returnValue = -1;
             }
 
             transaction?.Dispose();
