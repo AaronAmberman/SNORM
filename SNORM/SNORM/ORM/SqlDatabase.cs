@@ -105,25 +105,36 @@ namespace SNORM.ORM
             }
         }
 
-        private void DropTvpType(Type type, string createSchema)
+        private bool DropTvpType(Type type, string createSchema)
         {
-            string query = $"DROP TYPE {createSchema}.{type.Name}AsTvp";
+            try
+            {
+                string query = $"DROP TYPE {createSchema}.{type.Name}AsTvp";
 
-            SqlCommand command = new SqlCommand(query, sqlConnection);
+                SqlCommand command = new SqlCommand(query, sqlConnection);
 
-            command.ExecuteNonQuery();
-            command.Dispose();
+                command.ExecuteNonQuery();
+                command.Dispose();
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Log($"An error occurred attempting to drop TVP type...{Environment.NewLine}{ex}");
+
+                return false;
+            }
         }
 
-        private DataTable GenerateTvpDataTable<T>(List<T> instances, List<SqlColumn> columns, Dictionary<string, Tuple<SqlColumn, PropertyInfo>> columnAndPropertyMetadata, bool includeAutoIncrementColumns)
+        private DataTable GenerateTvpDataTable<T>(List<T> instances, Dictionary<string, Tuple<SqlColumn, PropertyInfo>> columnAndPropertyMetadata, bool includeAutoIncrementColumns)
         {
             DataTable dt = new DataTable();
 
-            foreach (SqlColumn col in columns)
+            foreach (KeyValuePair<string, Tuple<SqlColumn, PropertyInfo>> kvp in columnAndPropertyMetadata)
             {
-                if (!includeAutoIncrementColumns && col.AutoIncrement) continue;
+                if (!includeAutoIncrementColumns && kvp.Value.Item1.AutoIncrement) continue;
 
-                dt.Columns.Add(col.Name, col.DotNetType);
+                dt.Columns.Add(kvp.Key, kvp.Value.Item1.DotNetType);
             }
 
             foreach (T instance in instances)
@@ -145,16 +156,16 @@ namespace SNORM.ORM
             return dt;
         }
 
-        private string GenerateInsertTvpQuery(Type type, string typeSchema, List<SqlColumn> columns)
+        private string GenerateInsertTvpQuery(Type type, string typeSchema, Dictionary<string, Tuple<SqlColumn, PropertyInfo>> columns)
         {
             string query = $"INSERT INTO {typeSchema}.{type.Name} (";
 
-            foreach (SqlColumn col in columns)
+            foreach (KeyValuePair<string, Tuple<SqlColumn, PropertyInfo>> kvp in columns)
             {
                 // we don't need to insert data into auto incremented columns
-                if (col.AutoIncrement) continue;
+                if (kvp.Value.Item1.AutoIncrement) continue;
 
-                query += $"{col.Name},";
+                query += $"{kvp.Value.Item1.Name},";
             }
 
             // remove the last comma
@@ -162,12 +173,12 @@ namespace SNORM.ORM
 
             query += ") SELECT ";
 
-            foreach (SqlColumn col in columns)
+            foreach (KeyValuePair<string, Tuple<SqlColumn, PropertyInfo>> kvp in columns)
             {
                 // we don't need to insert data into auto incremented columns
-                if (col.AutoIncrement) continue;
+                if (kvp.Value.Item1.AutoIncrement) continue;
 
-                query += $"tvp.{col.Name},";
+                query += $"tvp.{kvp.Value.Item1.Name},";
             }
 
             // remove the last comma
@@ -178,33 +189,90 @@ namespace SNORM.ORM
             return query;
         }
 
-        private string GenerateUpdateTvpQuery(Type type, string typeSchema, List<SqlColumn> columns)
+        private string GenerateUpdateTvpQuery(Type type, string typeSchema, Dictionary<string, Tuple<SqlColumn, PropertyInfo>> columns)
         {
             string query = $"UPDATE {type.Name} SET ";
 
-            foreach (SqlColumn col in columns)
+            foreach (KeyValuePair<string, Tuple<SqlColumn, PropertyInfo>> kvp in columns)
             {
                 // we do not update auto incrementing columns
-                if (col.AutoIncrement) continue;
+                if (kvp.Value.Item1.AutoIncrement) continue;
 
-                query += $"{type.Name}.{col.Name} = tvp.{col.Name},";
+                query += $"{type.Name}.{kvp.Value.Item1.Name} = tvp.{kvp.Value.Item1.Name},";
             }
 
             // remove the last comma
             query = query.Substring(0, query.Length - 1);
             query += $" FROM {type.Name} INNER JOIN @tvp AS tvp ON ";
 
-            List<SqlColumn> primaryKeyColumns = columns.Where(c => c.IsPrimaryKey).ToList();
+            Dictionary<string, Tuple<SqlColumn, PropertyInfo>> primaryKeyColumns = columns.Where(c => c.Value.Item1.IsPrimaryKey).ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
 
-            foreach (SqlColumn col in primaryKeyColumns)
+            foreach (KeyValuePair<string, Tuple<SqlColumn, PropertyInfo>> kvp in primaryKeyColumns)
             {
-                query += $"{type.Name}.{col.Name} = tvp.{col.Name} AND ";
+                query += $"{type.Name}.{kvp.Value.Item1.Name} = tvp.{kvp.Value.Item1.Name} AND ";
             }
 
             // remove the last ' AND '
             query = query.Substring(0, query.Length - 5);
 
             return query;
+        }
+
+        private int GetColumnsAndCreateTvp<T>(List<T> instances, string createSchema, string typeSchema, bool includeAutoIncrementColumns, out Dictionary<string, Tuple<SqlColumn, PropertyInfo>> columns)
+        {
+            columns = new Dictionary<string, Tuple<SqlColumn, PropertyInfo>>();
+
+            List<SqlColumn> tempColumns = new List<SqlColumn>();
+
+            if (instances == null)
+            {
+                Log("The collection of instances to delete cannot be null.");
+
+                return -1;
+            }
+
+            if (sqlConnection.State != ConnectionState.Open)
+            {
+                Log("There must be an open and not busy connection waiting. Please connect first by calling Connect.");
+
+                return -1;
+            }
+
+            Type type = typeof(T);
+            PropertyInfo[] publicProperties = type.GetProperties();
+
+            // get column information
+            try
+            {
+                tempColumns = SqlInformationService.GetTableInformation(sqlConnection, typeSchema, type.Name, Log);
+            }
+            catch (Exception ex)
+            {
+                Log($"An error occurred attempting to get basic column information...{Environment.NewLine}{ex}");
+
+                return -1;
+            }
+
+            foreach (SqlColumn col in tempColumns)
+            {
+                PropertyInfo temp = publicProperties.FirstOrDefault(pi => pi.Name.Equals(col.Name, StringComparison.OrdinalIgnoreCase));
+
+                columns.Add(col.Name, new Tuple<SqlColumn, PropertyInfo>(col, temp));
+            }
+
+            // create the TVP out side of the transaction
+            try
+            {
+                CreateTvpType(type, createSchema, tempColumns, includeAutoIncrementColumns);
+            }
+            catch (Exception ex)
+            {
+                Log($"An error occurred attempting to create TVP type...{Environment.NewLine}{ex}");
+
+                return -1;
+            }
+
+            return 0;
         }
 
         /// <summary>Attempts to connect to the database.</summary>
@@ -242,59 +310,13 @@ namespace SNORM.ORM
         /// <returns>The number of affected rows or -1 if an error occurred.</returns>
         public int Delete<T>(List<T> instances, string typeSchema, string createSchema)
         {
-            int returnValue = -1;
-
-            if (instances == null)
-            {
-                Log("The collection of instances to delete cannot be null.");
-
-                return returnValue;
-            }
-
-            if (sqlConnection.State != ConnectionState.Open)
-            {
-                Log("There must be an open and not busy connection waiting. Please connect first by calling Connect.");
-
-                return returnValue;
-            }
-
             Type type = typeof(T);
-            PropertyInfo[] publicProperties = type.GetProperties();
 
-            List<SqlColumn> columns = new List<SqlColumn>();
+            Dictionary<string, Tuple<SqlColumn, PropertyInfo>> columns;
 
-            // get column information
-            try
-            {
-                columns = SqlInformationService.GetTableInformation(sqlConnection, typeSchema, type.Name, Log);
-            }
-            catch (Exception ex)
-            {
-                Log($"An error occurred attempting to get basic column information...{Environment.NewLine}{ex}");
+            int returnValue = GetColumnsAndCreateTvp(instances, createSchema, typeSchema, true, out columns);
 
-                return returnValue;
-            }
-
-            Dictionary<string, Tuple<SqlColumn, PropertyInfo>> columnAndPropertyMetadata = new Dictionary<string, Tuple<SqlColumn, PropertyInfo>>();
-
-            foreach (SqlColumn col in columns)
-            {
-                PropertyInfo temp = publicProperties.FirstOrDefault(pi => pi.Name.Equals(col.Name, StringComparison.OrdinalIgnoreCase));
-
-                columnAndPropertyMetadata.Add(col.Name, new Tuple<SqlColumn, PropertyInfo>(col, temp));
-            }
-
-            // create the TVP out side of the transaction
-            try
-            {
-                CreateTvpType(type, createSchema, columns, true);
-            }
-            catch (Exception ex)
-            {
-                Log($"An error occurred attempting to create TVP type...{Environment.NewLine}{ex}");
-
-                return returnValue;
-            }
+            if (returnValue == -1) return returnValue;
 
             SqlTransaction transaction = null;
 
@@ -304,7 +326,7 @@ namespace SNORM.ORM
                 transaction = sqlConnection.BeginTransaction();
 
                 string query = $"DELETE FROM {typeSchema}.{type.Name} WHERE EXISTS (SELECT tvp.* FROM @tvp AS tvp)";
-                DataTable dt = GenerateTvpDataTable(instances, columns, columnAndPropertyMetadata, true);
+                DataTable dt = GenerateTvpDataTable(instances, columns, true);
 
                 // setup command and execute query
                 SqlCommand command = new SqlCommand(query, sqlConnection, transaction);
@@ -325,19 +347,14 @@ namespace SNORM.ORM
                 transaction?.Rollback();
 
                 Log($"An error occurred during Delete...{Environment.NewLine}{ex}");
+
+                returnValue = -1;
             }
 
             transaction?.Dispose();
 
-            // drop the TVP out side of the transaction
-            try
-            {
-                DropTvpType(type, createSchema);
-            }
-            catch (Exception ex)
-            {
-                Log($"An error occurred attempting to drop TVP type...{Environment.NewLine}{ex}");
-            }
+            if (!DropTvpType(type, createSchema))
+                returnValue = -1;
 
             return returnValue;
         }
@@ -373,59 +390,13 @@ namespace SNORM.ORM
         /// <returns>The number of affected rows or -1 if an error occurred.</returns>
         public int Insert<T>(List<T> instances, string typeSchema, string createSchema)
         {
-            int returnValue = -1;
-
-            if (instances == null)
-            {
-                Log("The collection of instances to insert cannot be null.");
-
-                return returnValue;
-            }
-
-            if (sqlConnection.State != ConnectionState.Open)
-            {
-                Log("There must be an open and not busy connection waiting. Please connect first by calling Connect.");
-
-                return returnValue;
-            }
-
             Type type = typeof(T);
-            PropertyInfo[] publicProperties = type.GetProperties();
 
-            List<SqlColumn> columns = new List<SqlColumn>();
+            Dictionary<string, Tuple<SqlColumn, PropertyInfo>> columns;
 
-            // get column information
-            try
-            {
-                columns = SqlInformationService.GetTableInformation(sqlConnection, typeSchema, type.Name, Log);
-            }
-            catch (Exception ex)
-            {
-                Log($"An error occurred attempting to get basic column information...{Environment.NewLine}{ex}");
+            int returnValue = GetColumnsAndCreateTvp(instances, createSchema, typeSchema, false, out columns);
 
-                return returnValue;
-            }
-
-            Dictionary<string, Tuple<SqlColumn, PropertyInfo>> columnAndPropertyMetadata = new Dictionary<string, Tuple<SqlColumn, PropertyInfo>>();
-
-            foreach (SqlColumn col in columns)
-            {
-                PropertyInfo temp = publicProperties.FirstOrDefault(pi => pi.Name.Equals(col.Name, StringComparison.OrdinalIgnoreCase));
-
-                columnAndPropertyMetadata.Add(col.Name, new Tuple<SqlColumn, PropertyInfo>(col, temp));
-            }
-
-            // create the TVP out side of the transaction
-            try
-            {
-                CreateTvpType(type, createSchema, columns, false);
-            }
-            catch (Exception ex)
-            {
-                Log($"An error occurred attempting to create TVP type...{Environment.NewLine}{ex}");
-
-                return returnValue;
-            }
+            if (returnValue == -1) return returnValue;
 
             SqlTransaction transaction = null;
 
@@ -435,7 +406,7 @@ namespace SNORM.ORM
                 transaction = sqlConnection.BeginTransaction();
 
                 string query = GenerateInsertTvpQuery(type, typeSchema, columns);
-                DataTable dt = GenerateTvpDataTable(instances, columns, columnAndPropertyMetadata, false);                
+                DataTable dt = GenerateTvpDataTable(instances, columns, false);                
 
                 // setup command and execute query
                 SqlCommand command = new SqlCommand(query, sqlConnection, transaction);
@@ -460,15 +431,8 @@ namespace SNORM.ORM
 
             transaction?.Dispose();
 
-            // drop the TVP out side of the transaction
-            try
-            {
-                DropTvpType(type, createSchema);
-            }
-            catch (Exception ex)
-            {
-                Log($"An error occurred attempting to drop TVP type...{Environment.NewLine}{ex}");
-            }
+            if (!DropTvpType(type, createSchema))
+                returnValue = -1;
 
             return returnValue;
         }
@@ -587,59 +551,13 @@ namespace SNORM.ORM
         /// <returns>The number of affected rows or -1 if an error occurred.</returns>
         public int Update<T>(List<T> instances, string typeSchema, string createSchema)
         {
-            int returnValue = -1;
-
-            if (instances == null)
-            {
-                Log("The collection of instances to insert cannot be null.");
-
-                return returnValue;
-            }
-
-            if (sqlConnection.State != ConnectionState.Open)
-            {
-                Log("There must be an open and not busy connection waiting. Please connect first by calling Connect.");
-
-                return returnValue;
-            }
-
             Type type = typeof(T);
-            PropertyInfo[] publicProperties = type.GetProperties();
 
-            List<SqlColumn> columns = new List<SqlColumn>();
+            Dictionary<string, Tuple<SqlColumn, PropertyInfo>> columns;
 
-            // get column information
-            try
-            {
-                columns = SqlInformationService.GetTableInformation(sqlConnection, typeSchema, type.Name, Log);
-            }
-            catch (Exception ex)
-            {
-                Log($"An error occurred attempting to get basic column information...{Environment.NewLine}{ex}");
+            int returnValue = GetColumnsAndCreateTvp(instances, createSchema, typeSchema, true, out columns);
 
-                return returnValue;
-            }
-
-            Dictionary<string, Tuple<SqlColumn, PropertyInfo>> columnAndPropertyMetadata = new Dictionary<string, Tuple<SqlColumn, PropertyInfo>>();
-
-            foreach (SqlColumn col in columns)
-            {
-                PropertyInfo temp = publicProperties.FirstOrDefault(pi => pi.Name.Equals(col.Name, StringComparison.OrdinalIgnoreCase));
-
-                columnAndPropertyMetadata.Add(col.Name, new Tuple<SqlColumn, PropertyInfo>(col, temp));
-            }
-
-            // create the TVP out side of the transaction
-            try
-            {
-                CreateTvpType(type, createSchema, columns, true);
-            }
-            catch (Exception ex)
-            {
-                Log($"An error occurred attempting to create TVP type...{Environment.NewLine}{ex}");
-
-                return returnValue;
-            }
+            if (returnValue == -1) return returnValue;
 
             SqlTransaction transaction = null;
 
@@ -649,7 +567,7 @@ namespace SNORM.ORM
                 transaction = sqlConnection.BeginTransaction();
 
                 string query = GenerateUpdateTvpQuery(type, typeSchema, columns);
-                DataTable dt = GenerateTvpDataTable(instances, columns, columnAndPropertyMetadata, true);
+                DataTable dt = GenerateTvpDataTable(instances, columns, true);
 
                 // setup command and execute query
                 SqlCommand command = new SqlCommand(query, sqlConnection, transaction);
@@ -674,15 +592,8 @@ namespace SNORM.ORM
 
             transaction?.Dispose();
 
-            // drop the TVP out side of the transaction
-            try
-            {
-                DropTvpType(type, createSchema);
-            }
-            catch (Exception ex)
-            {
-                Log($"An error occurred attempting to drop TVP type...{Environment.NewLine}{ex}");
-            }
+            if (!DropTvpType(type, createSchema))
+                returnValue = -1;
 
             return returnValue;
         }
