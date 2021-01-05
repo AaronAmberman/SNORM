@@ -56,23 +56,31 @@ namespace SNORM.ORM
 
         #region Methods
 
-        private void CreateTvpType(Type type, string createSchema, List<SqlColumn> columns, bool includeAutoIncrementColumns)
+        private void CreateTvpType(Type type, string createSchema, Dictionary<string, Tuple<SqlColumn, PropertyInfo>> columnAndPropertyMetadata, bool includeAutoIncrementColumns)
         {
-            string query = $"CREATE TYPE {createSchema}.{type.Name}AsTvp AS TABLE (";
+            SqlTableAttribute sta = type.GetCustomAttribute<SqlTableAttribute>();
 
-            foreach (SqlColumn col in columns)
+            string typeName = sta == null ? type.Name : sta.TableName;
+
+            string query = $"CREATE TYPE {createSchema}.{typeName}AsTvp AS TABLE (";
+
+            foreach (KeyValuePair<string, Tuple<SqlColumn, PropertyInfo>> kvp in columnAndPropertyMetadata)
             {
-                if (!includeAutoIncrementColumns && col.AutoIncrement)
+                if (!includeAutoIncrementColumns && kvp.Value.Item1.AutoIncrement)
                     continue;
 
-                query += $"{col.Name} {col.Type}";
+                SqlColumnAttribute sca = kvp.Value.Item2.GetCustomAttribute<SqlColumnAttribute>();
+
+                string columnName = sca == null ? kvp.Value.Item1.Name : sca.ColumnName;
+
+                query += $"{columnName} {kvp.Value.Item1.Type}";
 
                 // if our column is of a data type that requires a length specification then we need to specifiy the length
-                if (col.Type == SqlDbType.Char || col.Type == SqlDbType.VarChar || col.Type == SqlDbType.Text || col.Type == SqlDbType.NText ||
-                    col.Type == SqlDbType.NChar || col.Type == SqlDbType.NVarChar || col.Type == SqlDbType.Binary || col.Type == SqlDbType.VarBinary ||
-                    col.Type == SqlDbType.Image)
+                if (kvp.Value.Item1.Type == SqlDbType.Char || kvp.Value.Item1.Type == SqlDbType.VarChar || kvp.Value.Item1.Type == SqlDbType.Text || 
+                    kvp.Value.Item1.Type == SqlDbType.NText || kvp.Value.Item1.Type == SqlDbType.NChar || kvp.Value.Item1.Type == SqlDbType.NVarChar || 
+                    kvp.Value.Item1.Type == SqlDbType.Binary || kvp.Value.Item1.Type == SqlDbType.VarBinary || kvp.Value.Item1.Type == SqlDbType.Image)
                 {
-                    query += $" ({col.Length})";
+                    query += $" ({kvp.Value.Item1.Length})";
                 }
 
                 query += ",";
@@ -109,7 +117,11 @@ namespace SNORM.ORM
         {
             try
             {
-                string query = $"DROP TYPE {createSchema}.{type.Name}AsTvp";
+                SqlTableAttribute sta = type.GetCustomAttribute<SqlTableAttribute>();
+
+                string tableName = sta == null ? type.Name : sta.TableName;
+
+                string query = $"DROP TYPE {createSchema}.{tableName}AsTvp";
 
                 SqlCommand command = new SqlCommand(query, sqlConnection);
 
@@ -158,14 +170,22 @@ namespace SNORM.ORM
 
         private string GenerateInsertTvpQuery(Type type, string typeSchema, Dictionary<string, Tuple<SqlColumn, PropertyInfo>> columns)
         {
-            string query = $"INSERT INTO {typeSchema}.{type.Name} (";
+            SqlTableAttribute sta = type.GetCustomAttribute<SqlTableAttribute>();
+
+            string tableName = sta == null ? type.Name : sta.TableName;
+
+            string query = $"INSERT INTO {typeSchema}.{tableName} (";
 
             foreach (KeyValuePair<string, Tuple<SqlColumn, PropertyInfo>> kvp in columns)
             {
                 // we don't need to insert data into auto incremented columns
                 if (kvp.Value.Item1.AutoIncrement) continue;
 
-                query += $"{kvp.Value.Item1.Name},";
+                SqlColumnAttribute sca = kvp.Value.Item2.GetCustomAttribute<SqlColumnAttribute>();
+
+                string columnName = sca == null ? kvp.Value.Item1.Name : sca.ColumnName;
+
+                query += $"{columnName},";
             }
 
             // remove the last comma
@@ -178,7 +198,11 @@ namespace SNORM.ORM
                 // we don't need to insert data into auto incremented columns
                 if (kvp.Value.Item1.AutoIncrement) continue;
 
-                query += $"tvp.{kvp.Value.Item1.Name},";
+                SqlColumnAttribute sca = kvp.Value.Item2.GetCustomAttribute<SqlColumnAttribute>();
+
+                string columnName = sca == null ? kvp.Value.Item1.Name : sca.ColumnName;
+
+                query += $"tvp.{columnName},";
             }
 
             // remove the last comma
@@ -191,25 +215,37 @@ namespace SNORM.ORM
 
         private string GenerateUpdateTvpQuery(Type type, string typeSchema, Dictionary<string, Tuple<SqlColumn, PropertyInfo>> columns)
         {
-            string query = $"UPDATE {type.Name} SET ";
+            SqlTableAttribute sta = type.GetCustomAttribute<SqlTableAttribute>();
+
+            string tableName = sta == null ? type.Name : sta.TableName;
+
+            string query = $"UPDATE {tableName} SET ";
 
             foreach (KeyValuePair<string, Tuple<SqlColumn, PropertyInfo>> kvp in columns)
             {
                 // we do not update auto incrementing columns
                 if (kvp.Value.Item1.AutoIncrement) continue;
 
-                query += $"{type.Name}.{kvp.Value.Item1.Name} = tvp.{kvp.Value.Item1.Name},";
+                SqlColumnAttribute sca = kvp.Value.Item2.GetCustomAttribute<SqlColumnAttribute>();
+
+                string columnName = sca == null ? kvp.Value.Item1.Name : sca.ColumnName;
+
+                query += $"{tableName}.{columnName} = tvp.{columnName},";
             }
 
             // remove the last comma
             query = query.Substring(0, query.Length - 1);
-            query += $" FROM {type.Name} INNER JOIN @tvp AS tvp ON ";
+            query += $" FROM {tableName} INNER JOIN @tvp AS tvp ON ";
 
             Dictionary<string, Tuple<SqlColumn, PropertyInfo>> primaryKeyColumns = columns.Where(c => c.Value.Item1.IsPrimaryKey).ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
 
             foreach (KeyValuePair<string, Tuple<SqlColumn, PropertyInfo>> kvp in primaryKeyColumns)
             {
-                query += $"{type.Name}.{kvp.Value.Item1.Name} = tvp.{kvp.Value.Item1.Name} AND ";
+                SqlColumnAttribute sca = kvp.Value.Item2.GetCustomAttribute<SqlColumnAttribute>();
+
+                string columnName = sca == null ? kvp.Value.Item1.Name : sca.ColumnName;
+
+                query += $"{tableName}.{columnName} = tvp.{columnName} AND ";
             }
 
             // remove the last ' AND '
@@ -240,11 +276,14 @@ namespace SNORM.ORM
 
             Type type = typeof(T);
             PropertyInfo[] publicProperties = type.GetProperties();
+            List<PropertyInfo> publicPropertiesWithAttributes = publicProperties.Where(pi => pi.GetCustomAttribute<SqlColumnAttribute>() != null).ToList();
+
+            SqlTableAttribute sta = type.GetCustomAttribute<SqlTableAttribute>();
 
             // get column information
             try
             {
-                tempColumns = SqlInformationService.GetTableInformation(sqlConnection, typeSchema, type.Name, Log);
+                tempColumns = SqlInformationService.GetTableInformation(sqlConnection, typeSchema, sta == null ? type.Name : sta.TableName, Log);
             }
             catch (Exception ex)
             {
@@ -255,15 +294,20 @@ namespace SNORM.ORM
 
             foreach (SqlColumn col in tempColumns)
             {
-                PropertyInfo temp = publicProperties.FirstOrDefault(pi => pi.Name.Equals(col.Name, StringComparison.OrdinalIgnoreCase));
+                // first match off a custom attribute...if there one defined
+                PropertyInfo matchingPropertyInfo = publicPropertiesWithAttributes.FirstOrDefault(pi => pi.GetCustomAttribute<SqlColumnAttribute>().ColumnName.Equals(col.Name, StringComparison.OrdinalIgnoreCase));
 
-                columns.Add(col.Name, new Tuple<SqlColumn, PropertyInfo>(col, temp));
+                // if not, match of the name of the property itself
+                if (matchingPropertyInfo == null)
+                    matchingPropertyInfo = publicProperties.FirstOrDefault(pi => pi.Name.Equals(col.Name, StringComparison.OrdinalIgnoreCase));
+
+                columns.Add(col.Name, new Tuple<SqlColumn, PropertyInfo>(col, matchingPropertyInfo));
             }
 
             // create the TVP out side of the transaction
             try
             {
-                CreateTvpType(type, createSchema, tempColumns, includeAutoIncrementColumns);
+                CreateTvpType(type, createSchema, columns, includeAutoIncrementColumns);
             }
             catch (Exception ex)
             {
@@ -312,6 +356,10 @@ namespace SNORM.ORM
         {
             Type type = typeof(T);
 
+            SqlTableAttribute sta = type.GetCustomAttribute<SqlTableAttribute>();
+
+            string tableName = sta == null ? type.Name : sta.TableName;
+
             Dictionary<string, Tuple<SqlColumn, PropertyInfo>> columns;
 
             int returnValue = GetColumnsAndCreateTvp(instances, createSchema, typeSchema, true, out columns);
@@ -325,14 +373,14 @@ namespace SNORM.ORM
                 // begin our transaction so we can roll back if needed
                 transaction = sqlConnection.BeginTransaction();
 
-                string query = $"DELETE FROM {typeSchema}.{type.Name} WHERE EXISTS (SELECT tvp.* FROM @tvp AS tvp)";
+                string query = $"DELETE FROM {typeSchema}.{tableName} WHERE EXISTS (SELECT tvp.* FROM @tvp AS tvp)";
                 DataTable dt = GenerateTvpDataTable(instances, columns, true);
 
                 // setup command and execute query
                 SqlCommand command = new SqlCommand(query, sqlConnection, transaction);
                 command.Parameters.Add(new SqlParameter("@TVP", SqlDbType.Structured)
                 {
-                    TypeName = $"{createSchema}.{type.Name}AsTvp",
+                    TypeName = $"{createSchema}.{tableName}AsTvp",
                     Value = dt
                 });
 
@@ -392,6 +440,10 @@ namespace SNORM.ORM
         {
             Type type = typeof(T);
 
+            SqlTableAttribute sta = type.GetCustomAttribute<SqlTableAttribute>();
+
+            string tableName = sta == null ? type.Name : sta.TableName;
+
             Dictionary<string, Tuple<SqlColumn, PropertyInfo>> columns;
 
             int returnValue = GetColumnsAndCreateTvp(instances, createSchema, typeSchema, false, out columns);
@@ -412,7 +464,7 @@ namespace SNORM.ORM
                 SqlCommand command = new SqlCommand(query, sqlConnection, transaction);
                 command.Parameters.Add(new SqlParameter("@TVP", SqlDbType.Structured)
                 {
-                    TypeName = $"{createSchema}.{type.Name}AsTvp",
+                    TypeName = $"{createSchema}.{tableName}AsTvp",
                     Value = dt
                 });
 
@@ -445,7 +497,13 @@ namespace SNORM.ORM
         public List<T> Select<T>()
             where T : class, new()
         {
-            string query = $"SELECT * FROM {typeof(T).Name}";
+            Type type = typeof(T);
+
+            SqlTableAttribute sta = type.GetCustomAttribute<SqlTableAttribute>();
+
+            string tableName = sta == null ? type.Name : sta.TableName;
+
+            string query = $"SELECT * FROM {tableName}";
 
             return Select<T>(query, CommandType.Text);
         }
@@ -479,6 +537,7 @@ namespace SNORM.ORM
 
                 Type type = typeof(T);
                 PropertyInfo[] publicProperties = type.GetProperties();
+                List<PropertyInfo> publicPropertiesWithAttributes = publicProperties.Where(pi => pi.GetCustomAttribute<SqlColumnAttribute>() != null).ToList();
 
                 SqlCommand command = new SqlCommand(query, sqlConnection)
                 {
@@ -512,12 +571,20 @@ namespace SNORM.ORM
                         // get value
                         for (int i = 0; i < reader.FieldCount; i++)
                         {
-                            PropertyInfo matchingPropertyInfo = publicProperties.FirstOrDefault(pi => pi.Name.Equals(columns[i], StringComparison.OrdinalIgnoreCase));
+                            // first match off a custom attribute...if there one defined
+                            PropertyInfo matchingPropertyInfo = publicPropertiesWithAttributes.FirstOrDefault(pi => pi.GetCustomAttribute<SqlColumnAttribute>().ColumnName.Equals(columns[i], StringComparison.OrdinalIgnoreCase));
+
+                            // if not, match of the name of the property itself
+                            if (matchingPropertyInfo == null)
+                                matchingPropertyInfo = publicProperties.FirstOrDefault(pi => pi.Name.Equals(columns[i], StringComparison.OrdinalIgnoreCase));
+
+                            // if we couldn't find a match then just iterate
+                            if (matchingPropertyInfo == null) continue;
 
                             object value = reader.GetValue(i);
                             value = value == DBNull.Value ? null : value;
 
-                            matchingPropertyInfo?.SetValue(instance, value);
+                            matchingPropertyInfo.SetValue(instance, value);
                         }
 
                         returnValues.Add(instance);
@@ -555,6 +622,10 @@ namespace SNORM.ORM
         {
             Type type = typeof(T);
 
+            SqlTableAttribute sta = type.GetCustomAttribute<SqlTableAttribute>();
+
+            string tableName = sta == null ? type.Name : sta.TableName;
+
             Dictionary<string, Tuple<SqlColumn, PropertyInfo>> columns;
 
             int returnValue = GetColumnsAndCreateTvp(instances, createSchema, typeSchema, true, out columns);
@@ -575,7 +646,7 @@ namespace SNORM.ORM
                 SqlCommand command = new SqlCommand(query, sqlConnection, transaction);
                 command.Parameters.Add(new SqlParameter("@TVP", SqlDbType.Structured)
                 {
-                    TypeName = $"{createSchema}.{type.Name}AsTvp",
+                    TypeName = $"{createSchema}.{tableName}AsTvp",
                     Value = dt
                 });
 
