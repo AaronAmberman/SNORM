@@ -125,3 +125,6 @@ This method has 6 parameters; |SqlConnection connection, bool autoConnect, Actio
 
 ### ExecuteQuery
 this method has 6 parameters; |SqlConnection connection, bool autoConnect, Action<string> log, string query, CommandType commandType, params SqlParameter[] parameters| and it returns a jagged object array containing the results of your query. Each object[] in the collection of object arrays  will represent a "row" of data in the result set. Each value in the row represents a "column" value. Know the order of the data being returned from the query horizontally (column order). So if you wanted to access row 5 column 3 you'd do returnedArray[4][2] and this will return the object that sits at that location, even if null. Check this yourself. **You will have to unbox the data yourself** because everything is returned as an object.
+
+# The SqlInformationService
+The APi also comes with another simple static class called SqlInformationService and the only method this class has is *GetTableInformation*. This will retrieve column metadata information for a table. :) 
