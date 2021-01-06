@@ -12,7 +12,7 @@ This is the simple user table I will reference in this article.
 # The ORM
 This API requires that the tables in your database have an primary key identity (auto-incremented) column to uniquely identify objects. This way auto generated queries can work properly and objects can be uniquely identified. This column does not have to be named **Id** but this is common. Also requires the user you are connecting with to have permissions to run SELECT, INSERT, UPDATE, DELETE, CREATE TYPE & DROP TYPE.
 
-**If your table does not contain a primary key column that is auto-incremented then the API will throw an error.**
+**If your table does not contain a primary key column that is auto-incremented (an identity) then the API will throw an error.**
 
 ## Basic Overview
 Make a class that represents the users table. **The type name is very important here, as well as the property names.** The type name must match the table name and the **public** properties must match the columns names. This is the basics of how this works. Just like JSON/XML serialization it just name matches to set values. I am sure I am trivializing how these work but I'm trying to make a simple comparison. :P
