@@ -111,7 +111,7 @@ CREATE TYPE dbo.UsersAsTvp AS TABLE (Id Int,FirstName VarChar (50),LastName VarC
 
 Notice how it includes auto-incremented columns in the types for these queries. Again, this is because they are used.
 
-## Select<<\T>>() vs Select<<\T>>(string...)
+## Select<\T>() vs Select<\T>(string...)
 The basic *Select* method will select all the records from the table. However if you want to run a custom SELECT statement then you can by using one of the overloads for the *Select* method. This way you can just return any data you want. Here is where some of the power of the API and the generic name matching comes in handy for populating data objects that don't represent tables but rather whatever result set you want. With a mix of power from the SQL side with aliasing returned columns as whatever you want (SELECT Id AS Identification, FirstName AS FN, etc. FROM Users...). Now lets consider a situation where you are returning a result set from a query that joins multiple tables together and selects data from those multiple tables. This won't map to a type name. **So for *Select* overloads that take in a query** we don't match the name of the type to the table name but rather just the columns and the properties.
 
 ## General Tips for Usage
