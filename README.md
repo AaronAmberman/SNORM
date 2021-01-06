@@ -117,6 +117,8 @@ The basic *Select* method will select all the records from the table that matche
 ## General Tips for Usage
 Understand your data and how these queries will affect your data. We try to qualify the operations as much as possible (again, use as many columns as we can) to avoid updating and deleting multiple records at the same time. However if you have a poorly designed database it may do just that. So it's up to you to design good normalized databases. :P 
 
+
+
 # The SimpleSqlService
 Included in the API is a simple static class call SimpleSqlService and this class provides two methods, ExecuteNonQuery and ExecuteQuery.
 
