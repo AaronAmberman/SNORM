@@ -154,3 +154,6 @@ This method has 6 parameters; |SqlConnection connection, bool autoConnect, Actio
 
 # The SqlInformationService
 The API also comes with another simple static class called SqlInformationService and the only method this class has is *GetTableInformation*. This will retrieve column metadata information for a table. :) This method has 4 parameters; |SqlConnection connection, string tableSchema, string tableName, Action<string> log|
+
+# What this API is Not
+This API is not the Entity Framework or other heavier weight ORM's that track and manage foreign key relationships and objects. The SqlColumn[] returned from *SqlInformationService.GetTableInformation* method will tell you if a column is a foreign key and give you the metadata about that foreign key (parent table, parent table column, child table, child table column and the name of the relationship itself) and you can use this to manage the problem yourself. Good luck!
