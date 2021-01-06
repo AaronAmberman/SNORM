@@ -292,6 +292,14 @@ namespace SNORM.ORM
                 return -1;
             }
 
+            // we need to check to see if we have an identity (auto-incremented) column, we require it
+            SqlColumn primaryKeyAutoIncrementedColumn = tempColumns.FirstOrDefault(col => col.AutoIncrement && col.IsPrimaryKey);
+
+            if (primaryKeyAutoIncrementedColumn == null)
+            {
+                throw new InvalidOperationException("The referenced table in the database does not contain a primary key column that is an identity (auto-incremented). This API requires this.");
+            }
+
             foreach (SqlColumn col in tempColumns)
             {
                 // first match off a custom attribute...if there one defined
