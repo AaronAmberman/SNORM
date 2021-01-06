@@ -6,7 +6,7 @@ using System.Data.SqlTypes;
 namespace SNORM
 {
     /// <summary>Represnts a column in a SQL table.</summary>
-    public class SqlColumn
+    public class SqlColumnInfo
     {
         #region Properties
 
@@ -84,8 +84,8 @@ namespace SNORM
 
         #region Constructors
 
-        /// <summary>Initializes a new instance of <see cref="SqlColumn"/>.</summary>
-        public SqlColumn()
+        /// <summary>Initializes a new instance of <see cref="SqlColumnInfo"/>.</summary>
+        public SqlColumnInfo()
         {
             ForeignKeys = new List<ForeignKey>();
         }

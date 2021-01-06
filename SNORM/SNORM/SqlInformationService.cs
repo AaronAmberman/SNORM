@@ -10,9 +10,9 @@ namespace SNORM
     /// <summary>Helps retrieve information about tables from the database.</summary>
     public static class SqlInformationService
     {
-        private static Dictionary<string, List<SqlColumn>> tableColumns = new Dictionary<string, List<SqlColumn>>();
+        private static Dictionary<string, List<SqlColumnInfo>> tableColumns = new Dictionary<string, List<SqlColumnInfo>>();
 
-        private static bool GetAutoIncrementStatus(SqlConnection connection, string tableName, Action<string> log, List<SqlColumn> columns)
+        private static bool GetAutoIncrementStatus(SqlConnection connection, string tableName, Action<string> log, List<SqlColumnInfo> columns)
         {
             // next get the auto increment step (increment in database) and seed
             string query = "SELECT [column].name, [column].is_identity, ident_incr([table].name) as identity_increment, ident_seed([table].name) as identity_seed " +
@@ -33,7 +33,7 @@ namespace SNORM
 
             foreach (object[] row in results)
             {
-                SqlColumn matchingColumn = columns.FirstOrDefault(col => col.Name.Equals(row[0].ToString(), StringComparison.OrdinalIgnoreCase));
+                SqlColumnInfo matchingColumn = columns.FirstOrDefault(col => col.Name.Equals(row[0].ToString(), StringComparison.OrdinalIgnoreCase));
 
                 if (matchingColumn != null)
                 {
@@ -46,9 +46,9 @@ namespace SNORM
             return true;
         }
 
-        private static List<SqlColumn> GetBasicColumnInformation(SqlConnection connection, string tableName, Action<string> log)
+        private static List<SqlColumnInfo> GetBasicColumnInformation(SqlConnection connection, string tableName, Action<string> log)
         {
-            List<SqlColumn> columns = new List<SqlColumn>();
+            List<SqlColumnInfo> columns = new List<SqlColumnInfo>();
 
             string query = "SELECT COLUMN_NAME, ORDINAL_POSITION, COLUMN_DEFAULT, IS_NULLABLE, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = @tableName";
 
@@ -65,7 +65,7 @@ namespace SNORM
 
             foreach (object[] row in results)
             {
-                SqlColumn column = new SqlColumn
+                SqlColumnInfo column = new SqlColumnInfo
                 {
                     Name = row[0].ToString(),
                     OrdinalPosition = int.Parse(row[1].ToString(), CultureInfo.CurrentCulture),
@@ -150,7 +150,7 @@ namespace SNORM
             return foreignKeys;
         }
 
-        private static bool GetPrimaryKeyStatus(SqlConnection connection, string tableSchema, string tableName, Action<string> log, List<SqlColumn> columns)
+        private static bool GetPrimaryKeyStatus(SqlConnection connection, string tableSchema, string tableName, Action<string> log, List<SqlColumnInfo> columns)
         {
             // next get if column is primary key (or part of multi-column primary key)
             string query = "SELECT kcu.COLUMN_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu " +
@@ -171,7 +171,7 @@ namespace SNORM
 
             foreach (object[] row in results)
             {
-                SqlColumn matchingColumn = columns.FirstOrDefault(col => col.Name.Equals(row[0].ToString(), StringComparison.OrdinalIgnoreCase));
+                SqlColumnInfo matchingColumn = columns.FirstOrDefault(col => col.Name.Equals(row[0].ToString(), StringComparison.OrdinalIgnoreCase));
 
                 if (matchingColumn != null)
                 {
@@ -222,7 +222,7 @@ namespace SNORM
         /// <param name="tableName">The table name to get column information about.</param>
         /// <param name="log">The method to call to write log messages to (only errors are logged).</param>
         /// <returns>A list of columns containing metadata about each column or null if an error occurred.</returns>
-        public static List<SqlColumn> GetTableInformation(SqlConnection connection, string tableSchema, string tableName, Action<string> log)
+        public static List<SqlColumnInfo> GetTableInformation(SqlConnection connection, string tableSchema, string tableName, Action<string> log)
         {
             SqlConnectionStringBuilder builder = new SqlConnectionStringBuilder(connection.ConnectionString);
 
@@ -234,7 +234,7 @@ namespace SNORM
 
             try
             {
-                List<SqlColumn> columns = GetBasicColumnInformation(connection, tableName, log);
+                List<SqlColumnInfo> columns = GetBasicColumnInformation(connection, tableName, log);
                         
                 if (!GetAutoIncrementStatus(connection, tableName, log, columns))
                 {
@@ -256,7 +256,7 @@ namespace SNORM
 
                     foreach (ForeignKey childFk in childForeignKeys)
                     {
-                        SqlColumn matchingColumn = columns.FirstOrDefault(col => col.Name.Equals(childFk.ChildColumnName, StringComparison.OrdinalIgnoreCase));
+                        SqlColumnInfo matchingColumn = columns.FirstOrDefault(col => col.Name.Equals(childFk.ChildColumnName, StringComparison.OrdinalIgnoreCase));
                         matchingColumn?.ForeignKeys.Add(childFk);
                     }
 
@@ -265,7 +265,7 @@ namespace SNORM
 
                     foreach (ForeignKey parentFk in parentForeignKeys)
                     {
-                        SqlColumn matchingColumn = columns.FirstOrDefault(col => col.Name.Equals(parentFk.ParentColumnName, StringComparison.OrdinalIgnoreCase));
+                        SqlColumnInfo matchingColumn = columns.FirstOrDefault(col => col.Name.Equals(parentFk.ParentColumnName, StringComparison.OrdinalIgnoreCase));
                         matchingColumn?.ForeignKeys.Add(parentFk);
                     }
                 }

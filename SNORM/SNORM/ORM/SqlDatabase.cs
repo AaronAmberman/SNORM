@@ -56,7 +56,7 @@ namespace SNORM.ORM
 
         #region Methods
 
-        private void CreateTvpType(Type type, string createSchema, Dictionary<string, Tuple<SqlColumn, PropertyInfo>> columnAndPropertyMetadata, bool includeAutoIncrementColumns)
+        private void CreateTvpType(Type type, string createSchema, Dictionary<string, Tuple<SqlColumnInfo, PropertyInfo>> columnAndPropertyMetadata, bool includeAutoIncrementColumns)
         {
             SqlTableAttribute sta = type.GetCustomAttribute<SqlTableAttribute>();
 
@@ -64,7 +64,7 @@ namespace SNORM.ORM
 
             string query = $"CREATE TYPE {createSchema}.{typeName}AsTvp AS TABLE (";
 
-            foreach (KeyValuePair<string, Tuple<SqlColumn, PropertyInfo>> kvp in columnAndPropertyMetadata)
+            foreach (KeyValuePair<string, Tuple<SqlColumnInfo, PropertyInfo>> kvp in columnAndPropertyMetadata)
             {
                 if (!includeAutoIncrementColumns && kvp.Value.Item1.AutoIncrement)
                     continue;
@@ -138,11 +138,11 @@ namespace SNORM.ORM
             }
         }
 
-        private DataTable GenerateTvpDataTable<T>(List<T> instances, Dictionary<string, Tuple<SqlColumn, PropertyInfo>> columnAndPropertyMetadata, bool includeAutoIncrementColumns)
+        private DataTable GenerateTvpDataTable<T>(List<T> instances, Dictionary<string, Tuple<SqlColumnInfo, PropertyInfo>> columnAndPropertyMetadata, bool includeAutoIncrementColumns)
         {
             DataTable dt = new DataTable();
 
-            foreach (KeyValuePair<string, Tuple<SqlColumn, PropertyInfo>> kvp in columnAndPropertyMetadata)
+            foreach (KeyValuePair<string, Tuple<SqlColumnInfo, PropertyInfo>> kvp in columnAndPropertyMetadata)
             {
                 if (!includeAutoIncrementColumns && kvp.Value.Item1.AutoIncrement) continue;
 
@@ -154,7 +154,7 @@ namespace SNORM.ORM
                 // get values to add to this row
                 List<object> values = new List<object>();
 
-                foreach (KeyValuePair<string, Tuple<SqlColumn, PropertyInfo>> kvp in columnAndPropertyMetadata)
+                foreach (KeyValuePair<string, Tuple<SqlColumnInfo, PropertyInfo>> kvp in columnAndPropertyMetadata)
                 {
                     // we don't need to insert data into auto incremented columns
                     if (!includeAutoIncrementColumns && kvp.Value.Item1.AutoIncrement) continue;
@@ -168,7 +168,7 @@ namespace SNORM.ORM
             return dt;
         }
 
-        private string GenerateInsertTvpQuery(Type type, string typeSchema, Dictionary<string, Tuple<SqlColumn, PropertyInfo>> columns)
+        private string GenerateInsertTvpQuery(Type type, string typeSchema, Dictionary<string, Tuple<SqlColumnInfo, PropertyInfo>> columns)
         {
             SqlTableAttribute sta = type.GetCustomAttribute<SqlTableAttribute>();
 
@@ -176,7 +176,7 @@ namespace SNORM.ORM
 
             string query = $"INSERT INTO {typeSchema}.{tableName} (";
 
-            foreach (KeyValuePair<string, Tuple<SqlColumn, PropertyInfo>> kvp in columns)
+            foreach (KeyValuePair<string, Tuple<SqlColumnInfo, PropertyInfo>> kvp in columns)
             {
                 // we don't need to insert data into auto incremented columns
                 if (kvp.Value.Item1.AutoIncrement) continue;
@@ -193,7 +193,7 @@ namespace SNORM.ORM
 
             query += ") SELECT ";
 
-            foreach (KeyValuePair<string, Tuple<SqlColumn, PropertyInfo>> kvp in columns)
+            foreach (KeyValuePair<string, Tuple<SqlColumnInfo, PropertyInfo>> kvp in columns)
             {
                 // we don't need to insert data into auto incremented columns
                 if (kvp.Value.Item1.AutoIncrement) continue;
@@ -213,7 +213,7 @@ namespace SNORM.ORM
             return query;
         }
 
-        private string GenerateUpdateTvpQuery(Type type, string typeSchema, Dictionary<string, Tuple<SqlColumn, PropertyInfo>> columns)
+        private string GenerateUpdateTvpQuery(Type type, string typeSchema, Dictionary<string, Tuple<SqlColumnInfo, PropertyInfo>> columns)
         {
             SqlTableAttribute sta = type.GetCustomAttribute<SqlTableAttribute>();
 
@@ -221,7 +221,7 @@ namespace SNORM.ORM
 
             string query = $"UPDATE {typeSchema}.{tableName} SET ";
 
-            foreach (KeyValuePair<string, Tuple<SqlColumn, PropertyInfo>> kvp in columns)
+            foreach (KeyValuePair<string, Tuple<SqlColumnInfo, PropertyInfo>> kvp in columns)
             {
                 // we do not update auto incrementing columns
                 if (kvp.Value.Item1.AutoIncrement) continue;
@@ -237,9 +237,9 @@ namespace SNORM.ORM
             query = query.Substring(0, query.Length - 1);
             query += $" FROM {tableName} INNER JOIN @tvp AS tvp ON ";
 
-            Dictionary<string, Tuple<SqlColumn, PropertyInfo>> primaryKeyColumns = columns.Where(c => c.Value.Item1.IsPrimaryKey).ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+            Dictionary<string, Tuple<SqlColumnInfo, PropertyInfo>> primaryKeyColumns = columns.Where(c => c.Value.Item1.IsPrimaryKey).ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
 
-            foreach (KeyValuePair<string, Tuple<SqlColumn, PropertyInfo>> kvp in primaryKeyColumns)
+            foreach (KeyValuePair<string, Tuple<SqlColumnInfo, PropertyInfo>> kvp in primaryKeyColumns)
             {
                 SqlColumnAttribute sca = kvp.Value.Item2.GetCustomAttribute<SqlColumnAttribute>();
 
@@ -254,11 +254,11 @@ namespace SNORM.ORM
             return query;
         }
 
-        private int GetColumnsAndCreateTvp<T>(List<T> instances, string createSchema, string typeSchema, bool includeAutoIncrementColumns, out Dictionary<string, Tuple<SqlColumn, PropertyInfo>> columns)
+        private int GetColumnsAndCreateTvp<T>(List<T> instances, string createSchema, string typeSchema, bool includeAutoIncrementColumns, out Dictionary<string, Tuple<SqlColumnInfo, PropertyInfo>> columns)
         {
-            columns = new Dictionary<string, Tuple<SqlColumn, PropertyInfo>>();
+            columns = new Dictionary<string, Tuple<SqlColumnInfo, PropertyInfo>>();
 
-            List<SqlColumn> tempColumns = new List<SqlColumn>();
+            List<SqlColumnInfo> tempColumns = new List<SqlColumnInfo>();
 
             if (instances == null)
             {
@@ -293,14 +293,14 @@ namespace SNORM.ORM
             }
 
             // we need to check to see if we have an identity (auto-incremented) column, we require it
-            SqlColumn primaryKeyAutoIncrementedColumn = tempColumns.FirstOrDefault(col => col.AutoIncrement && col.IsPrimaryKey);
+            SqlColumnInfo primaryKeyAutoIncrementedColumn = tempColumns.FirstOrDefault(col => col.AutoIncrement && col.IsPrimaryKey);
 
             if (primaryKeyAutoIncrementedColumn == null)
             {
                 throw new InvalidOperationException("The referenced table in the database does not contain a primary key column that is an identity (auto-incremented). This API requires this.");
             }
 
-            foreach (SqlColumn col in tempColumns)
+            foreach (SqlColumnInfo col in tempColumns)
             {
                 // first match off a custom attribute...if there one defined
                 PropertyInfo matchingPropertyInfo = publicPropertiesWithAttributes.FirstOrDefault(pi => pi.GetCustomAttribute<SqlColumnAttribute>().ColumnName.Equals(col.Name, StringComparison.OrdinalIgnoreCase));
@@ -309,7 +309,7 @@ namespace SNORM.ORM
                 if (matchingPropertyInfo == null)
                     matchingPropertyInfo = publicProperties.FirstOrDefault(pi => pi.Name.Equals(col.Name, StringComparison.OrdinalIgnoreCase));
 
-                columns.Add(col.Name, new Tuple<SqlColumn, PropertyInfo>(col, matchingPropertyInfo));
+                columns.Add(col.Name, new Tuple<SqlColumnInfo, PropertyInfo>(col, matchingPropertyInfo));
             }
 
             // create the TVP out side of the transaction
@@ -368,7 +368,7 @@ namespace SNORM.ORM
 
             string tableName = sta == null ? type.Name : sta.TableName;
 
-            Dictionary<string, Tuple<SqlColumn, PropertyInfo>> columns;
+            Dictionary<string, Tuple<SqlColumnInfo, PropertyInfo>> columns;
 
             int returnValue = GetColumnsAndCreateTvp(instances, createSchema, typeSchema, true, out columns);
 
@@ -452,7 +452,7 @@ namespace SNORM.ORM
 
             string tableName = sta == null ? type.Name : sta.TableName;
 
-            Dictionary<string, Tuple<SqlColumn, PropertyInfo>> columns;
+            Dictionary<string, Tuple<SqlColumnInfo, PropertyInfo>> columns;
 
             int returnValue = GetColumnsAndCreateTvp(instances, createSchema, typeSchema, false, out columns);
 
@@ -645,7 +645,7 @@ namespace SNORM.ORM
 
             string tableName = sta == null ? type.Name : sta.TableName;
 
-            Dictionary<string, Tuple<SqlColumn, PropertyInfo>> columns;
+            Dictionary<string, Tuple<SqlColumnInfo, PropertyInfo>> columns;
 
             int returnValue = GetColumnsAndCreateTvp(instances, createSchema, typeSchema, true, out columns);
 

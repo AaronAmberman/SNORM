@@ -114,6 +114,32 @@ Notice how it includes auto-incremented columns in the types for these queries. 
 ## Select\<T>() vs Select\<T>(string...)
 The basic *Select* method will select all the records from the table that matches the type name exactly. However if you want to run a custom SELECT statement then you can by using one of the overloads for the *Select* method. This way you can just return any data you want. Here is where some of the power of the API and the generic name matching comes in handy for populating data objects that don't represent tables but rather whatever result set you want. With a mix of power from the SQL side with aliasing returned columns as whatever you want (SELECT Id AS Identification, FirstName AS FN, etc. FROM Users...). Now lets consider a situation where you are returning a result set from a query that joins multiple tables together and selects data from those multiple tables. This won't map to a type name. **So for *Select* overloads that take in a query** we don't match the name of the type to a table name but rather just the columns and the properties.
 
+## Override Name Matching
+With everything being said about the type name needing to match the table name and the property names needing to match the column names, you can override this with the use of 2 attributes, SqlTableAttribute and SqlColumnAttribute. Pretty self explanatory but the SqlTableAttribute can only be used on a class and the SqlColumnAttribute can only be used on a property. This simply allows you to alias the name used when the API references the type or its properties.
+
+```C#
+[SqlTableAttribute("WhateverYouWant")]
+public class Users
+{
+    [SqlColumnAttribute("SomeColumnName")]
+    public int Id { get; set; }
+
+    [SqlColumnAttribute("SomeColumnName2")]
+    public string FirstName { get; set; }
+    
+    [SqlColumnAttribute("SomeColumnName3")]
+    public string LastName { get; set; }
+    
+    [SqlColumnAttribute("SomeColumnName4")]
+    public int Age { get; set; }
+    
+    [SqlColumnAttribute("SomeColumnName5")]
+    public string Email { get; set; }
+}
+```
+
+So now *WhateverYouWant* will be used in the generated queries and types as the table name and *SomeColumnName#* will be used in the generated queries and types as the column names.
+
 ## General Tips for Usage
 Understand your data and how these queries will affect your data. We try to qualify the operations as much as possible (again, use as many columns as we can) to avoid updating and deleting multiple records at the same time. However if you have a poorly designed database it may do just that. So it's up to you to design good normalized databases. :P 
 
@@ -124,7 +150,7 @@ Included in the API is a simple static class call SimpleSqlService and this clas
 This method has 6 parameters; |SqlConnection connection, bool autoConnect, Action<string> log, string query, CommandType commandType, params SqlParameter[] parameters| and it returns the number of rows affected just like *SqlCommand.ExecuteNonQuery*.
 
 ### ExecuteQuery
-this method has 6 parameters; |SqlConnection connection, bool autoConnect, Action<string> log, string query, CommandType commandType, params SqlParameter[] parameters| and it returns a jagged object array containing the results of your query. Each object[] in the collection of object arrays  will represent a "row" of data in the result set. Each value in the row represents a "column" value. Know the order of the data being returned from the query horizontally (column order). So if you wanted to access row 5 column 3 you'd do returnedArray[4][2] and this will return the object that sits at that location, even if null. Check this yourself. **You will have to unbox the data yourself** because everything is returned as an object.
+This method has 6 parameters; |SqlConnection connection, bool autoConnect, Action<string> log, string query, CommandType commandType, params SqlParameter[] parameters| and it returns a jagged object array containing the results of your query. Each object[] in the collection of object arrays  will represent a "row" of data in the result set. Each value in the row represents a "column" value. Know the order of the data being returned from the query horizontally (column order). So if you wanted to access row 5 column 3 you'd do returnedArray[4][2] and this will return the object that sits at that location, even if null. Check this yourself. **You will have to unbox the data yourself** because everything is returned as an object.
 
 # The SqlInformationService
 The API also comes with another simple static class called SqlInformationService and the only method this class has is *GetTableInformation*. This will retrieve column metadata information for a table. :) This method has 4 parameters; |SqlConnection connection, string tableSchema, string tableName, Action<string> log|
