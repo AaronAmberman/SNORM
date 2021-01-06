@@ -219,7 +219,7 @@ namespace SNORM.ORM
 
             string tableName = sta == null ? type.Name : sta.TableName;
 
-            string query = $"UPDATE {tableName} SET ";
+            string query = $"UPDATE {typeSchema}.{tableName} SET ";
 
             foreach (KeyValuePair<string, Tuple<SqlColumn, PropertyInfo>> kvp in columns)
             {
