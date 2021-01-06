@@ -15,7 +15,7 @@ This API requires that the tables in your database have an primary key identity 
 **If your table does not contain a primary key column that is auto-incremented (an identity) then the API will throw an error.**
 
 ### Basic Overview
-Make a class that represents the users table. **The type name is very important here, as well as the property names.** The type name must match the table name and the **public** properties must match the columns names. This is the basics of how this works. Just like JSON/XML serialization it just name matches to set values. I am sure I am trivializing how these work but I'm trying to make a simple comparison. :P
+Make a class that represents the users table. **The type name is very important here, as well as the property names.** The type name must match the table name and the **public** properties must match the column names. This is the basics of how this works. Just like JSON/XML serialization it just name matches to set values. I am sure I am trivializing how these work but I'm trying to make a simple comparison. :P
 
 ```C#
 public class Users
@@ -144,7 +144,7 @@ So now *WhateverYouWant* will be used in the generated queries and types as the 
 Understand your data and how these queries will affect your data. We try to qualify the operations as much as possible (again, use as many columns as we can) to avoid updating and deleting multiple records at the same time. However if you have a poorly designed database it may do just that. So it's up to you to design good normalized databases. :P 
 
 # The SimpleSqlService
-Included in the API is a simple static class call SimpleSqlService and this class provides two methods, ExecuteNonQuery and ExecuteQuery.
+Included in the API is a simple static class called SimpleSqlService and this class provides two methods, ExecuteNonQuery and ExecuteQuery.
 
 ### ExecuteNonQuery
 This method has 6 parameters; |SqlConnection connection, bool autoConnect, Action<string> log, string query, CommandType commandType, params SqlParameter[] parameters| and it returns the number of rows affected just like *SqlCommand.ExecuteNonQuery*.
