@@ -20,6 +20,9 @@ namespace SNORM.ORM
 
         #region Properties
 
+        /// <summary>Gets the current state of the connection.</summary>
+        public ConnectionState ConnectionState => sqlConnection.State;
+
         /// <summary>Gets or sets the connection string.</summary>
         public string ConnectionString => sqlConnection.ConnectionString;
 
