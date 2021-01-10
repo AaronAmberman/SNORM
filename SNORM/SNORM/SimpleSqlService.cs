@@ -59,6 +59,8 @@ namespace SNORM
                 returnValue = command.ExecuteNonQuery();
 
                 transaction.Commit();
+
+                command.Dispose();
             }
             catch(Exception ex)
             {
@@ -136,9 +138,11 @@ namespace SNORM
 
                         rows.Add(row);
                     }
-
-                    reader.Close();
                 }
+
+                reader.Close();
+
+                command.Dispose();
 
                 if (autoConnect)
                     connection.Close();
