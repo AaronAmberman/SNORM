@@ -5,16 +5,23 @@ using System.Data.SqlClient;
 using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 
 namespace SNORM.ORM
 {
     /// <summary>Represents a SQL database. This class cannot be inherited.</summary>
-    public sealed class SqlDatabase : IDisposable
+    public sealed class SqlDatabase : IDatabase
     {
+        #region Constants
+
+        public const string DEFAULT_SCHEMA = "dbo";
+
+        #endregion
+
         #region Fields
 
-        private SqlConnection sqlConnection;
         private bool disposedValue;
+        private SqlConnection sqlConnection;
 
         #endregion
 
@@ -23,11 +30,11 @@ namespace SNORM.ORM
         /// <summary>Gets the current state of the connection.</summary>
         public ConnectionState ConnectionState => sqlConnection.State;
 
-        /// <summary>Gets or sets the connection string.</summary>
-        public string ConnectionString => sqlConnection.ConnectionString;
+        /// <summary>Gets or sets the error log action (logs errors).</summary>
+        public Action<string> ErrorLogAction { get; set; }
 
-        /// <summary>Gets or sets the method to call for logging (only errors are logged).</summary>
-        public Action<string> Log { get; set; }
+        /// <summary>Gets the connection string.</summary>
+        public string ConnectionString => sqlConnection.ConnectionString;
 
         #endregion
 
@@ -52,20 +59,33 @@ namespace SNORM.ORM
 
             sqlConnection = new SqlConnection(builder.ConnectionString);
 
-            Log = DefaultLogging;
+            ErrorLogAction = (string errorMessage) => 
+            {
+                Debug.WriteLine(errorMessage);
+            };
         }
 
         #endregion
 
         #region Methods
 
+        /// <summary>Begins a SQL transaction.</summary>
+        /// <returns>The transaction.</returns>
+        public SqlTransaction BeginTransaction()
+        {
+            return sqlConnection.BeginTransaction();
+        }
+
         private void CreateTvpType(Type type, string createSchema, Dictionary<string, Tuple<SqlColumnInfo, PropertyInfo>> columnAndPropertyMetadata, bool includeAutoIncrementColumns)
         {
             SqlTableAttribute sta = type.GetCustomAttribute<SqlTableAttribute>();
 
-            string typeName = sta == null ? type.Name : sta.TableName;
+            string typeName = sta == null ? type.Name : string.IsNullOrWhiteSpace(sta.TableName) ? type.Name : sta.TableName;
+            string schema = sta == null ? createSchema : string.IsNullOrWhiteSpace(sta.Schema) ? createSchema : sta.Schema;
 
-            string query = $"CREATE TYPE {createSchema}.{typeName}AsTvp AS TABLE (";
+            string query = $"IF EXISTS(SELECT 1 FROM sys.types WHERE name = '{typeName}AsTvp' AND is_table_type = 1 AND schema_id = SCHEMA_ID('{schema}')) " +
+                $"DROP TYPE {schema}.{typeName}AsTvp;" +
+                $"CREATE TYPE {schema}.{typeName}AsTvp AS TABLE (";
 
             foreach (KeyValuePair<string, Tuple<SqlColumnInfo, PropertyInfo>> kvp in columnAndPropertyMetadata)
             {
@@ -79,8 +99,8 @@ namespace SNORM.ORM
                 query += $"{columnName} {kvp.Value.Item1.Type}";
 
                 // if our column is of a data type that requires a length specification then we need to specifiy the length
-                if (kvp.Value.Item1.Type == SqlDbType.Char || kvp.Value.Item1.Type == SqlDbType.VarChar || kvp.Value.Item1.Type == SqlDbType.Text || 
-                    kvp.Value.Item1.Type == SqlDbType.NText || kvp.Value.Item1.Type == SqlDbType.NChar || kvp.Value.Item1.Type == SqlDbType.NVarChar || 
+                if (kvp.Value.Item1.Type == SqlDbType.Char || kvp.Value.Item1.Type == SqlDbType.VarChar || kvp.Value.Item1.Type == SqlDbType.Text ||
+                    kvp.Value.Item1.Type == SqlDbType.NText || kvp.Value.Item1.Type == SqlDbType.NChar || kvp.Value.Item1.Type == SqlDbType.NVarChar ||
                     kvp.Value.Item1.Type == SqlDbType.Binary || kvp.Value.Item1.Type == SqlDbType.VarBinary || kvp.Value.Item1.Type == SqlDbType.Image)
                 {
                     query += $" ({kvp.Value.Item1.Length})";
@@ -90,17 +110,12 @@ namespace SNORM.ORM
             }
 
             query = query.Substring(0, query.Length - 1); // remove the last comma
-            query += ")";
+            query += ");";
 
             SqlCommand command = new SqlCommand(query, sqlConnection);
 
             command.ExecuteNonQuery();
             command.Dispose();
-        }
-
-        private void DefaultLogging(string entry)
-        {
-            Debug.WriteLine(entry);
         }
 
         private void Dispose(bool disposing)
@@ -122,9 +137,10 @@ namespace SNORM.ORM
             {
                 SqlTableAttribute sta = type.GetCustomAttribute<SqlTableAttribute>();
 
-                string tableName = sta == null ? type.Name : sta.TableName;
+                string typeName = sta == null ? type.Name : string.IsNullOrWhiteSpace(sta.TableName) ? type.Name : sta.TableName;
+                string schema = sta == null ? createSchema : string.IsNullOrWhiteSpace(sta.Schema) ? createSchema : sta.Schema;
 
-                string query = $"DROP TYPE {createSchema}.{tableName}AsTvp";
+                string query = $"DROP TYPE {schema}.{typeName}AsTvp";
 
                 SqlCommand command = new SqlCommand(query, sqlConnection);
 
@@ -135,7 +151,7 @@ namespace SNORM.ORM
             }
             catch (Exception ex)
             {
-                Log($"An error occurred attempting to drop TVP type...{Environment.NewLine}{ex}");
+                ErrorLogAction($"An error occurred attempting to drop TVP type: {ex.Message}");
 
                 return false;
             }
@@ -175,9 +191,10 @@ namespace SNORM.ORM
         {
             SqlTableAttribute sta = type.GetCustomAttribute<SqlTableAttribute>();
 
-            string tableName = sta == null ? type.Name : sta.TableName;
+            string typeName = sta == null ? type.Name : string.IsNullOrWhiteSpace(sta.TableName) ? type.Name : sta.TableName;
+            string schema = sta == null ? typeSchema : string.IsNullOrWhiteSpace(sta.Schema) ? typeSchema : sta.Schema;
 
-            string query = $"INSERT INTO {typeSchema}.{tableName} (";
+            string query = $"INSERT INTO {schema}.{typeName} (";
 
             foreach (KeyValuePair<string, Tuple<SqlColumnInfo, PropertyInfo>> kvp in columns)
             {
@@ -220,9 +237,10 @@ namespace SNORM.ORM
         {
             SqlTableAttribute sta = type.GetCustomAttribute<SqlTableAttribute>();
 
-            string tableName = sta == null ? type.Name : sta.TableName;
+            string typeName = sta == null ? type.Name : string.IsNullOrWhiteSpace(sta.TableName) ? type.Name : sta.TableName;
+            string schema = sta == null ? typeSchema : string.IsNullOrWhiteSpace(sta.Schema) ? typeSchema : sta.Schema;
 
-            string query = $"UPDATE {typeSchema}.{tableName} SET ";
+            string query = $"UPDATE {schema}.{typeName} SET ";
 
             foreach (KeyValuePair<string, Tuple<SqlColumnInfo, PropertyInfo>> kvp in columns)
             {
@@ -233,12 +251,12 @@ namespace SNORM.ORM
 
                 string columnName = sca == null ? kvp.Value.Item1.Name : sca.ColumnName;
 
-                query += $"{tableName}.{columnName} = tvp.{columnName},";
+                query += $"{typeName}.{columnName} = tvp.{columnName},";
             }
 
             // remove the last comma
             query = query.Substring(0, query.Length - 1);
-            query += $" FROM {tableName} INNER JOIN @tvp AS tvp ON ";
+            query += $" FROM {typeName} INNER JOIN @tvp AS tvp ON ";
 
             Dictionary<string, Tuple<SqlColumnInfo, PropertyInfo>> primaryKeyColumns = columns.Where(c => c.Value.Item1.IsPrimaryKey).ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
 
@@ -248,7 +266,7 @@ namespace SNORM.ORM
 
                 string columnName = sca == null ? kvp.Value.Item1.Name : sca.ColumnName;
 
-                query += $"{tableName}.{columnName} = tvp.{columnName} AND ";
+                query += $"{typeName}.{columnName} = tvp.{columnName} AND ";
             }
 
             // remove the last ' AND '
@@ -265,14 +283,14 @@ namespace SNORM.ORM
 
             if (instances == null)
             {
-                Log("The collection of instances to delete cannot be null.");
+                ErrorLogAction("The collection of instances to delete cannot be null.");
 
                 return -1;
             }
 
             if (sqlConnection.State != ConnectionState.Open)
             {
-                Log("There must be an open and not busy connection waiting. Please connect first by calling Connect.");
+                ErrorLogAction("There must be an open and not busy connection waiting. Please connect first by calling Connect.");
 
                 return -1;
             }
@@ -283,14 +301,17 @@ namespace SNORM.ORM
 
             SqlTableAttribute sta = type.GetCustomAttribute<SqlTableAttribute>();
 
+            string typeName = sta == null ? type.Name : string.IsNullOrWhiteSpace(sta.TableName) ? type.Name : sta.TableName;
+            string schema = sta == null ? typeSchema : string.IsNullOrWhiteSpace(sta.Schema) ? typeSchema : sta.Schema;
+
             // get column information
             try
             {
-                tempColumns = SqlInformationService.GetTableInformation(sqlConnection, typeSchema, sta == null ? type.Name : sta.TableName, Log);
+                tempColumns = SqlInformationService.GetTableInformation(sqlConnection, typeSchema, typeName, ErrorLogAction);
             }
             catch (Exception ex)
             {
-                Log($"An error occurred attempting to get basic column information...{Environment.NewLine}{ex}");
+                ErrorLogAction($"An error occurred attempting to get basic column information: {ex.Message}");
 
                 return -1;
             }
@@ -315,14 +336,15 @@ namespace SNORM.ORM
                 columns.Add(col.Name, new Tuple<SqlColumnInfo, PropertyInfo>(col, matchingPropertyInfo));
             }
 
-            // create the TVP out side of the transaction
+            schema = sta == null ? createSchema : string.IsNullOrWhiteSpace(sta.Schema) ? createSchema : sta.Schema;
+
             try
             {
-                CreateTvpType(type, createSchema, columns, includeAutoIncrementColumns);
+                CreateTvpType(type, schema, columns, includeAutoIncrementColumns);
             }
             catch (Exception ex)
             {
-                Log($"An error occurred attempting to create TVP type...{Environment.NewLine}{ex}");
+                ErrorLogAction($"An error occurred attempting to create TVP type: {ex.Message}");
 
                 return -1;
             }
@@ -331,9 +353,11 @@ namespace SNORM.ORM
         }
 
         /// <summary>Attempts to connect to the database.</summary>
-        /// <returns>True if successfully connected or else false.</returns>
+        /// <returns>True if successfully connected otherwise false.</returns>
         public bool Connect()
         {
+            VerifyDisposed();
+
             try
             {
                 sqlConnection.Open();
@@ -342,7 +366,7 @@ namespace SNORM.ORM
             }
             catch (Exception ex)
             {
-                Log($"An error occurred during Connect...{Environment.NewLine}{ex}");
+                ErrorLogAction($"An error occurred during Connect: {ex.Message}");
 
                 return false;
             }
@@ -365,54 +389,84 @@ namespace SNORM.ORM
         /// <returns>The number of affected rows or -1 if an error occurred.</returns>
         public int Delete<T>(List<T> instances, string typeSchema, string createSchema)
         {
-            Type type = typeof(T);
+            VerifyDisposed();
 
-            SqlTableAttribute sta = type.GetCustomAttribute<SqlTableAttribute>();
-
-            string tableName = sta == null ? type.Name : sta.TableName;
-
-            Dictionary<string, Tuple<SqlColumnInfo, PropertyInfo>> columns;
-
-            int returnValue = GetColumnsAndCreateTvp(instances, createSchema, typeSchema, true, out columns);
-
-            if (returnValue == -1) return returnValue;
-
+            int returnValue;
             SqlTransaction transaction = null;
 
             try
             {
-                // begin our transaction so we can roll back if needed
                 transaction = sqlConnection.BeginTransaction();
 
-                string query = $"DELETE FROM {typeSchema}.{tableName} WHERE EXISTS (SELECT tvp.* FROM @tvp AS tvp)";
-                DataTable dt = GenerateTvpDataTable(instances, columns, true);
+                returnValue = Delete<T>(instances, transaction, typeSchema, createSchema);
 
-                // setup command and execute query
-                SqlCommand command = new SqlCommand(query, sqlConnection, transaction);
-                command.Parameters.Add(new SqlParameter("@TVP", SqlDbType.Structured)
-                {
-                    TypeName = $"{createSchema}.{tableName}AsTvp",
-                    Value = dt
-                });
-
-                returnValue = command.ExecuteNonQuery();
-
-                transaction?.Commit();
-
-                command.Dispose();
+                if (returnValue == -1) transaction.Rollback();
+                else transaction.Commit();
             }
             catch (Exception ex)
             {
                 transaction?.Rollback();
 
-                Log($"An error occurred during Delete...{Environment.NewLine}{ex}");
+                ErrorLogAction($"An error occurred during Delete: {ex.Message}");
 
                 returnValue = -1;
             }
 
             transaction?.Dispose();
 
-            if (!DropTvpType(type, createSchema))
+            return returnValue;
+        }
+
+        /// <summary>Deletes the objects from the database.</summary>
+        /// <typeparam name="T">The type of object to delete.</typeparam>
+        /// <param name="instances">The collection of objects to delete.</param>
+        /// <param name="transaction">The SQL transaction to use for the query.</param>
+        /// <param name="typeSchema">The schema which owns the table that is having data deleted from it.</param>
+        /// <param name="createSchema">This procedure creates types in the database and as such this allows control of which schema those objects are created in.</param>
+        /// <returns>The number of affected rows or -1 if an error occurred.</returns>
+        public int Delete<T>(List<T> instances, SqlTransaction transaction, string typeSchema, string createSchema)
+        {
+            VerifyDisposed();
+
+            Type type = typeof(T);
+
+            SqlTableAttribute sta = type.GetCustomAttribute<SqlTableAttribute>();
+
+            string typeName = sta == null ? type.Name : string.IsNullOrWhiteSpace(sta.TableName) ? type.Name : sta.TableName;
+            string schema = sta == null ? typeSchema : string.IsNullOrWhiteSpace(sta.Schema) ? typeSchema : sta.Schema;
+            string schema2 = sta == null ? createSchema : string.IsNullOrWhiteSpace(sta.Schema) ? createSchema : sta.Schema;
+
+            Dictionary<string, Tuple<SqlColumnInfo, PropertyInfo>> columns;
+
+            int returnValue = GetColumnsAndCreateTvp(instances, schema2, schema, true, out columns);
+
+            if (returnValue == -1) return returnValue;
+
+            try
+            {
+                string query = $"DELETE FROM {schema}.{typeName} WHERE EXISTS (SELECT tvp.* FROM @tvp AS tvp)";
+                DataTable dt = GenerateTvpDataTable(instances, columns, true);
+
+                // setup command and execute query
+                SqlCommand command = new SqlCommand(query, sqlConnection, transaction);
+                command.Parameters.Add(new SqlParameter("@TVP", SqlDbType.Structured)
+                {
+                    TypeName = $"{schema2}.{typeName}AsTvp",
+                    Value = dt
+                });
+
+                returnValue = command.ExecuteNonQuery();
+
+                command.Dispose();
+            }
+            catch (Exception ex)
+            {
+                ErrorLogAction($"An error occurred during Delete: {ex.Message}");
+
+                returnValue = -1;
+            }
+
+            if (!DropTvpType(type, schema2))
                 returnValue = -1;
 
             return returnValue;
@@ -421,15 +475,121 @@ namespace SNORM.ORM
         /// <summary>Disconnects from the database.</summary>
         public void Disconnect()
         {
+            VerifyDisposed();
+
             sqlConnection.Close();
         }
 
         /// <summary>Performs application-defined tasks associated with freeing, releasing, or resetting unmanaged and managed resources.</summary>
         public void Dispose()
         {
-            Dispose(disposing: true);
+            VerifyDisposed();
+
+            Dispose(true);
 
             GC.SuppressFinalize(this);
+        }
+
+        public int ExecuteNonQuery(string query, CommandType commandType, params SqlParameter[] parameters)
+        {
+            SqlTransaction transaction = null;
+            int returnValue;
+
+            try
+            {
+                // begin our transaction so we can roll back if needed
+                transaction = sqlConnection.BeginTransaction();
+
+                returnValue = ExecuteNonQuery(transaction, query, commandType, parameters);
+
+                if (returnValue == -1) transaction.Rollback();
+                else transaction.Commit();
+            }
+            catch (Exception ex)
+            {
+                transaction?.Rollback();
+
+                ErrorLogAction($"An error occurred during ExecuteNonQuery: {ex.Message}");
+
+                returnValue = -1;
+            }
+
+            transaction?.Dispose();
+
+            return returnValue;
+        }
+
+        public int ExecuteNonQuery(SqlTransaction transaction, string query, CommandType commandType, params SqlParameter[] parameters)
+        {
+            int returnValue;
+
+            try
+            {
+                // setup command and execute query
+                SqlCommand command = new SqlCommand(query, sqlConnection, transaction);
+                command.Parameters.AddRange(parameters);
+
+                returnValue = command.ExecuteNonQuery();
+
+                command.Dispose();
+            }
+            catch (Exception ex)
+            {
+                ErrorLogAction($"An error occurred during ExecuteNonQuery: {ex.Message}");
+
+                returnValue = -1;
+            }
+
+            return returnValue;
+        }
+
+        public object[][] ExecuteQuery(string query, CommandType commandType, params SqlParameter[] parameters)
+        {
+            try
+            {
+                SqlCommand command = new SqlCommand(query, sqlConnection)
+                {
+                    CommandType = commandType
+                };
+
+                if (parameters.Length > 0)
+                    command.Parameters.AddRange(parameters);
+
+                SqlDataReader reader = command.ExecuteReader();
+
+                List<object[]> rows = new List<object[]>();
+
+                if (reader.HasRows)
+                {
+                    while (reader.Read())
+                    {
+                        object[] row = new object[reader.FieldCount];
+
+                        for (int i = 0; i < reader.FieldCount; i++)
+                        {
+                            object value = reader.GetValue(i);
+
+                            value = value == DBNull.Value ? null : value;
+
+                            row[i] = value;
+                        }
+
+                        rows.Add(row);
+                    }
+                }
+
+                reader.Close();
+
+                command.Dispose();
+
+                return rows.ToArray();
+            }
+            catch (Exception ex)
+            {
+                ErrorLogAction($"An error occurred during ExecuteQuery: {ex.Message}");
+
+                return null;
+            }
         }
 
         /// <summary>Inserts the objects into the database.</summary>
@@ -449,54 +609,84 @@ namespace SNORM.ORM
         /// <returns>The number of affected rows or -1 if an error occurred.</returns>
         public int Insert<T>(List<T> instances, string typeSchema, string createSchema)
         {
-            Type type = typeof(T);
+            VerifyDisposed();
 
-            SqlTableAttribute sta = type.GetCustomAttribute<SqlTableAttribute>();
-
-            string tableName = sta == null ? type.Name : sta.TableName;
-
-            Dictionary<string, Tuple<SqlColumnInfo, PropertyInfo>> columns;
-
-            int returnValue = GetColumnsAndCreateTvp(instances, createSchema, typeSchema, false, out columns);
-
-            if (returnValue == -1) return returnValue;
-
+            int returnValue;
             SqlTransaction transaction = null;
 
             try
             {
-                // begin our transaction so we can roll back if needed
                 transaction = sqlConnection.BeginTransaction();
 
-                string query = GenerateInsertTvpQuery(type, typeSchema, columns);
-                DataTable dt = GenerateTvpDataTable(instances, columns, false);                
+                returnValue = Insert<T>(instances, transaction, typeSchema, createSchema);
 
-                // setup command and execute query
-                SqlCommand command = new SqlCommand(query, sqlConnection, transaction);
-                command.Parameters.Add(new SqlParameter("@TVP", SqlDbType.Structured)
-                {
-                    TypeName = $"{createSchema}.{tableName}AsTvp",
-                    Value = dt
-                });
-
-                returnValue = command.ExecuteNonQuery();
-
-                transaction?.Commit();
-
-                command.Dispose();
+                if (returnValue == -1) transaction.Rollback();
+                else transaction.Commit();
             }
             catch (Exception ex)
             {
                 transaction?.Rollback();
 
-                Log($"An error occurred during Insert...{Environment.NewLine}{ex}");
+                ErrorLogAction($"An error occurred during Insert: {ex.Message}");
 
                 returnValue = -1;
             }
 
             transaction?.Dispose();
 
-            if (!DropTvpType(type, createSchema))
+            return returnValue;
+        }
+
+        /// <summary>Inserts the objects into the database.</summary>
+        /// <typeparam name="T">The type of object to insert.</typeparam>
+        /// <param name="instances">The collection of objects to insert.</param>
+        /// <param name="transaction">The SQL transaction to use for the query.</param>
+        /// <param name="typeSchema">The schema which owns the table that is having data inserted into.</param>
+        /// <param name="createSchema">This procedure creates types in the database and as such this allows control of which schema those objects are created in.</param>
+        /// <returns>The number of affected rows or -1 if an error occurred.</returns>
+        public int Insert<T>(List<T> instances, SqlTransaction transaction, string typeSchema, string createSchema)
+        {
+            VerifyDisposed();
+
+            Type type = typeof(T);
+
+            SqlTableAttribute sta = type.GetCustomAttribute<SqlTableAttribute>();
+
+            string typeName = sta == null ? type.Name : string.IsNullOrWhiteSpace(sta.TableName) ? type.Name : sta.TableName;
+            string schema = sta == null ? typeSchema : string.IsNullOrWhiteSpace(sta.Schema) ? typeSchema : sta.Schema;
+            string schema2 = sta == null ? createSchema : string.IsNullOrWhiteSpace(sta.Schema) ? createSchema : sta.Schema;
+
+            Dictionary<string, Tuple<SqlColumnInfo, PropertyInfo>> columns;
+
+            int returnValue = GetColumnsAndCreateTvp(instances, schema2, schema, false, out columns);
+
+            if (returnValue == -1) return returnValue;
+
+            try
+            {
+                string query = GenerateInsertTvpQuery(type, schema, columns);
+                DataTable dt = GenerateTvpDataTable(instances, columns, false);
+
+                // setup command and execute query
+                SqlCommand command = new SqlCommand(query, sqlConnection, transaction);
+                command.Parameters.Add(new SqlParameter("@TVP", SqlDbType.Structured)
+                {
+                    TypeName = $"{schema2}.{typeName}AsTvp",
+                    Value = dt
+                });
+
+                returnValue = command.ExecuteNonQuery();
+
+                command.Dispose();
+            }
+            catch (Exception ex)
+            {
+                ErrorLogAction($"An error occurred during Insert: {ex.Message}");
+
+                returnValue = -1;
+            }
+
+            if (!DropTvpType(type, schema2))
                 returnValue = -1;
 
             return returnValue;
@@ -512,10 +702,15 @@ namespace SNORM.ORM
 
             SqlTableAttribute sta = type.GetCustomAttribute<SqlTableAttribute>();
 
-            string tableName = sta == null ? type.Name : sta.TableName;
+            string typeName = sta == null ? type.Name : string.IsNullOrWhiteSpace(sta.TableName) ? type.Name : sta.TableName;
 
-            string query = $"SELECT * FROM {tableName}";
+            string query = $"SELECT * FROM {typeName}";
 
+            return Select<T>(query, CommandType.Text);
+        }
+
+        public List<T> Select<T>(string query) where T : class, new()
+        {
             return Select<T>(query, CommandType.Text);
         }
 
@@ -536,19 +731,21 @@ namespace SNORM.ORM
         /// <param name="commandType">The type of command.</param>
         /// <param name="parameters">Parameters, if any, for the Transact-SQL statement.</param>
         /// <returns>A list of instances of type T returned by the query or null if an error occurred.</returns>
-        public List<T> Select<T>(string query, CommandType commandType, params SqlParameter[] parameters) 
+        public List<T> Select<T>(string query, CommandType commandType, params SqlParameter[] parameters)
              where T : class, new()
         {
+            VerifyDisposed();
+
             if (string.IsNullOrEmpty(query))
             {
-                Log("The query null, empty or consists only of white-space characters. Please set the query.");
+                ErrorLogAction("The query null, empty or consists only of white-space characters. Please set the query.");
 
                 return null;
             }
 
             if (sqlConnection.State != ConnectionState.Open)
             {
-                Log("There must be an open and not busy connection waiting. Please connect first by calling Connect.");
+                ErrorLogAction("There must be an open and not busy connection waiting. Please connect first by calling Connect.");
 
                 return null;
             }
@@ -617,9 +814,9 @@ namespace SNORM.ORM
 
                 return returnValues;
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
-                Log($"An error occurred during Select...{Environment.NewLine}{ex}");
+                ErrorLogAction($"An error occurred during Select:{ex.Message}");
 
                 return null;
             }
@@ -642,59 +839,94 @@ namespace SNORM.ORM
         /// <returns>The number of affected rows or -1 if an error occurred.</returns>
         public int Update<T>(List<T> instances, string typeSchema, string createSchema)
         {
-            Type type = typeof(T);
+            VerifyDisposed();
 
-            SqlTableAttribute sta = type.GetCustomAttribute<SqlTableAttribute>();
-
-            string tableName = sta == null ? type.Name : sta.TableName;
-
-            Dictionary<string, Tuple<SqlColumnInfo, PropertyInfo>> columns;
-
-            int returnValue = GetColumnsAndCreateTvp(instances, createSchema, typeSchema, true, out columns);
-
-            if (returnValue == -1) return returnValue;
-
+            int returnValue = -1;
             SqlTransaction transaction = null;
 
             try
             {
-                // begin our transaction so we can roll back if needed
                 transaction = sqlConnection.BeginTransaction();
 
-                string query = GenerateUpdateTvpQuery(type, typeSchema, columns);
-                DataTable dt = GenerateTvpDataTable(instances, columns, true);
+                returnValue = Update<T>(instances, transaction, typeSchema, createSchema);
 
-                // setup command and execute query
-                SqlCommand command = new SqlCommand(query, sqlConnection, transaction);
-                command.Parameters.Add(new SqlParameter("@TVP", SqlDbType.Structured)
-                {
-                    TypeName = $"{createSchema}.{tableName}AsTvp",
-                    Value = dt
-                });
-
-                returnValue = command.ExecuteNonQuery();
-
-                transaction?.Commit();
-
-                command.Dispose();
+                if (returnValue == -1) transaction.Rollback();
+                else transaction.Commit();
             }
             catch (Exception ex)
             {
                 transaction?.Rollback();
 
-                Log($"An error occurred during Update...{Environment.NewLine}{ex}");
+                ErrorLogAction($"An error occurred during Update: {ex.Message}");
 
                 returnValue = -1;
             }
 
             transaction?.Dispose();
 
-            if (!DropTvpType(type, createSchema))
+            return returnValue;
+        }
+
+        /// <summary>Updates objects in the database.</summary>
+        /// <typeparam name="T">The type of object to update.</typeparam>
+        /// <param name="instances">The collection of objects to update.</param>
+        /// <param name="transaction">The SQL transaction to use for the query.</param>
+        /// <param name="typeSchema">The schema which owns the table that is having data updated.</param>
+        /// <param name="createSchema">This procedure creates types in the database and as such this allows control of which schema those objects are created in.</param>
+        /// <returns>The number of affected rows or -1 if an error occurred.</returns>
+        public int Update<T>(List<T> instances, SqlTransaction transaction, string typeSchema, string createSchema)
+        {
+            VerifyDisposed();
+
+            Type type = typeof(T);
+
+            SqlTableAttribute sta = type.GetCustomAttribute<SqlTableAttribute>();
+
+            string typeName = sta == null ? type.Name : string.IsNullOrWhiteSpace(sta.TableName) ? type.Name : sta.TableName;
+            string schema = sta == null ? typeSchema : string.IsNullOrWhiteSpace(sta.Schema) ? typeSchema : sta.Schema;
+            string schema2 = sta == null ? createSchema : string.IsNullOrWhiteSpace(sta.Schema) ? createSchema : sta.Schema;
+
+            Dictionary<string, Tuple<SqlColumnInfo, PropertyInfo>> columns;
+
+            int returnValue = GetColumnsAndCreateTvp(instances, schema2, schema, true, out columns);
+
+            if (returnValue == -1) return returnValue;
+
+            try
+            {
+                string query = GenerateUpdateTvpQuery(type, schema, columns);
+                DataTable dt = GenerateTvpDataTable(instances, columns, true);
+
+                // setup command and execute query
+                SqlCommand command = new SqlCommand(query, sqlConnection, transaction);
+                command.Parameters.Add(new SqlParameter("@TVP", SqlDbType.Structured)
+                {
+                    TypeName = $"{schema2}.{typeName}AsTvp",
+                    Value = dt
+                });
+
+                returnValue = command.ExecuteNonQuery();
+
+                command.Dispose();
+            }
+            catch (Exception ex)
+            {
+                ErrorLogAction($"An error occurred during Update: {ex.Message}");
+
+                returnValue = -1;
+            }
+
+            if (!DropTvpType(type, schema2))
                 returnValue = -1;
 
             return returnValue;
         }
 
+        private void VerifyDisposed([CallerMemberName] string caller = "")
+        {
+            if (disposedValue)
+                throw new ObjectDisposedException("Solis.Database.Sql.ORM.SqlDatabase", $"{caller} cannot be accessed because the object instance has been disposed.");
+        }
         #endregion
     }
 }

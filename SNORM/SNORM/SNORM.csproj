@@ -42,6 +42,9 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="ForeignKey.cs" />
+    <Compile Include="IConnectableDataSource.cs" />
+    <Compile Include="IDatabase.cs" />
+    <Compile Include="IDataSource.cs" />
     <Compile Include="ORM\SqlColumnAttribute.cs" />
     <Compile Include="ORM\SqlDatabase.cs" />
     <Compile Include="ORM\SqlTableAttribute.cs" />
