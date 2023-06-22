@@ -46,16 +46,12 @@ namespace SNORM.ORM
         public SqlDatabase(string connectionString)
         {
             if (string.IsNullOrEmpty(connectionString))
-            {
                 throw new ArgumentNullException(nameof(connectionString));
-            }
 
             SqlConnectionStringBuilder builder = new SqlConnectionStringBuilder(connectionString);
 
             if (string.IsNullOrEmpty(builder.InitialCatalog))
-            {
                 throw new ArgumentException("The connection string MUST contain a database name.");
-            }
 
             sqlConnection = new SqlConnection(builder.ConnectionString);
 
@@ -73,6 +69,8 @@ namespace SNORM.ORM
         /// <returns>The transaction.</returns>
         public SqlTransaction BeginTransaction()
         {
+            VerifyDisposed();
+
             return sqlConnection.BeginTransaction();
         }
 
@@ -391,6 +389,15 @@ namespace SNORM.ORM
         {
             VerifyDisposed();
 
+            if (instances == null || instances.Count == 0)
+                throw new ArgumentNullException(nameof(instances));
+
+            if (string.IsNullOrWhiteSpace(typeSchema))
+                throw new ArgumentNullException(nameof(typeSchema));
+
+            if (string.IsNullOrWhiteSpace(createSchema))
+                throw new ArgumentNullException(nameof(createSchema));
+
             int returnValue;
             SqlTransaction transaction = null;
 
@@ -427,6 +434,18 @@ namespace SNORM.ORM
         public int Delete<T>(List<T> instances, SqlTransaction transaction, string typeSchema, string createSchema)
         {
             VerifyDisposed();
+
+            if (instances == null || instances.Count == 0)
+                throw new ArgumentNullException(nameof(instances));
+
+            if (transaction == null)
+                throw new ArgumentNullException(nameof(transaction));
+
+            if (string.IsNullOrWhiteSpace(typeSchema))
+                throw new ArgumentNullException(nameof(typeSchema));
+
+            if (string.IsNullOrWhiteSpace(createSchema))
+                throw new ArgumentNullException(nameof(createSchema));
 
             Type type = typeof(T);
 
@@ -492,6 +511,8 @@ namespace SNORM.ORM
 
         public int ExecuteNonQuery(string query, CommandType commandType, params SqlParameter[] parameters)
         {
+            VerifyDisposed();
+
             SqlTransaction transaction = null;
             int returnValue;
 
@@ -521,6 +542,8 @@ namespace SNORM.ORM
 
         public int ExecuteNonQuery(SqlTransaction transaction, string query, CommandType commandType, params SqlParameter[] parameters)
         {
+            VerifyDisposed();
+
             int returnValue;
 
             try
@@ -545,6 +568,8 @@ namespace SNORM.ORM
 
         public object[][] ExecuteQuery(string query, CommandType commandType, params SqlParameter[] parameters)
         {
+            VerifyDisposed();
+
             try
             {
                 SqlCommand command = new SqlCommand(query, sqlConnection)
@@ -611,6 +636,15 @@ namespace SNORM.ORM
         {
             VerifyDisposed();
 
+            if (instances == null || instances.Count == 0)
+                throw new ArgumentNullException(nameof(instances));
+
+            if (string.IsNullOrWhiteSpace(typeSchema))
+                throw new ArgumentNullException(nameof(typeSchema));
+
+            if (string.IsNullOrWhiteSpace(createSchema))
+                throw new ArgumentNullException(nameof(createSchema));
+
             int returnValue;
             SqlTransaction transaction = null;
 
@@ -647,6 +681,18 @@ namespace SNORM.ORM
         public int Insert<T>(List<T> instances, SqlTransaction transaction, string typeSchema, string createSchema)
         {
             VerifyDisposed();
+
+            if (instances == null || instances.Count == 0)
+                throw new ArgumentNullException(nameof(instances));
+
+            if (transaction == null)
+                throw new ArgumentNullException(nameof(transaction));
+
+            if (string.IsNullOrWhiteSpace(typeSchema))
+                throw new ArgumentNullException(nameof(typeSchema));
+
+            if (string.IsNullOrWhiteSpace(createSchema))
+                throw new ArgumentNullException(nameof(createSchema));
 
             Type type = typeof(T);
 
@@ -698,6 +744,8 @@ namespace SNORM.ORM
         public List<T> Select<T>()
             where T : class, new()
         {
+            VerifyDisposed();
+
             Type type = typeof(T);
 
             SqlTableAttribute sta = type.GetCustomAttribute<SqlTableAttribute>();
@@ -709,6 +757,10 @@ namespace SNORM.ORM
             return Select<T>(query, CommandType.Text);
         }
 
+        /// <summary>Selects objects from the database and maps the results to the instances of type T.</summary>
+        /// <typeparam name="T">The type of object to map the results to.</typeparam>
+        /// <param name="query">The Transact-SQL statement to execute.</param>
+        /// <returns>A list of instances of type T returned by the query or null if an error occurred.</returns>
         public List<T> Select<T>(string query) where T : class, new()
         {
             return Select<T>(query, CommandType.Text);
@@ -841,6 +893,15 @@ namespace SNORM.ORM
         {
             VerifyDisposed();
 
+            if (instances == null || instances.Count == 0)
+                throw new ArgumentNullException(nameof(instances));
+
+            if (string.IsNullOrWhiteSpace(typeSchema))
+                throw new ArgumentNullException(nameof(typeSchema));
+
+            if (string.IsNullOrWhiteSpace(createSchema))
+                throw new ArgumentNullException(nameof(createSchema));
+
             int returnValue = -1;
             SqlTransaction transaction = null;
 
@@ -877,6 +938,18 @@ namespace SNORM.ORM
         public int Update<T>(List<T> instances, SqlTransaction transaction, string typeSchema, string createSchema)
         {
             VerifyDisposed();
+
+            if (instances == null || instances.Count == 0)
+                throw new ArgumentNullException(nameof(instances));
+
+            if (transaction == null)
+                throw new ArgumentNullException(nameof(transaction));
+
+            if (string.IsNullOrWhiteSpace(typeSchema))
+                throw new ArgumentNullException(nameof(typeSchema));
+
+            if (string.IsNullOrWhiteSpace(createSchema))
+                throw new ArgumentNullException(nameof(createSchema));
 
             Type type = typeof(T);
 
