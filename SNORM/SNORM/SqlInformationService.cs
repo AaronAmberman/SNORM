@@ -18,7 +18,7 @@ namespace SNORM
             string query = "SELECT [column].name, [column].is_identity, ident_incr([table].name) as identity_increment, ident_seed([table].name) as identity_seed " +
                            "FROM sys.tables[table] " +
                            "INNER JOIN sys.columns[column] ON[table].object_id = [column].object_id " +
-                           "WHERE[table].name = @tableName AND[column].is_identity = 1";
+                           "WHERE[table].name = @tableName AND [column].is_identity = 1";
 
             SqlParameter tableNameParameter = new SqlParameter("@tableName", tableName);
 
