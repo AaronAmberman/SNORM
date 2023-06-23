@@ -74,7 +74,7 @@ namespace SNORM.ORM
             return sqlConnection.BeginTransaction();
         }
 
-        private void CreateTvpType(Type type, string createSchema, Dictionary<string, Tuple<SqlColumnInfo, PropertyInfo>> columnAndPropertyMetadata, bool includeAutoIncrementColumns)
+        private void CreateTvpType(Type type, string createSchema, Dictionary<string, Tuple<SqlColumnInfo, PropertyInfo>> columnAndPropertyMetadata, bool includeAutoIncrementColumns, SqlTransaction sqlTransaction = null)
         {
             SqlTableAttribute sta = type.GetCustomAttribute<SqlTableAttribute>();
 
@@ -111,6 +111,8 @@ namespace SNORM.ORM
             query += ");";
 
             SqlCommand command = new SqlCommand(query, sqlConnection);
+
+            if (sqlTransaction != null) command.Transaction = sqlTransaction;
 
             command.ExecuteNonQuery();
             command.Dispose();
