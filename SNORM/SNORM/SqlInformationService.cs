@@ -235,20 +235,20 @@ namespace SNORM
 
             try
             {
-                List<SqlColumnInfo> columns = GetBasicColumnInformation(connection, tableName, log);
+                List<SqlColumnInfo> columns = GetBasicColumnInformation(connection, tableName, log, sqlTransaction);
 
-                if (!GetAutoIncrementStatus(connection, tableName, log, columns))
+                if (!GetAutoIncrementStatus(connection, tableName, log, columns, sqlTransaction))
                 {
                     return null;
                 }
 
-                if (!GetPrimaryKeyStatus(connection, tableSchema, tableName, log, columns))
+                if (!GetPrimaryKeyStatus(connection, tableSchema, tableName, log, columns, sqlTransaction))
                 {
                     return null;
                 }
 
                 // finally get foreign key information about the column
-                List<ForeignKey> foreignKeys = GetForeignKeysForTable(connection, tableSchema, tableName, log);
+                List<ForeignKey> foreignKeys = GetForeignKeysForTable(connection, tableSchema, tableName, log, sqlTransaction);
 
                 if (foreignKeys != null)
                 {
