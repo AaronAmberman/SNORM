@@ -12,7 +12,7 @@ namespace SNORM
     {
         private static Dictionary<string, List<SqlColumnInfo>> tableColumns = new Dictionary<string, List<SqlColumnInfo>>();
 
-        private static bool GetAutoIncrementStatus(SqlConnection connection, string tableName, Action<string> log, List<SqlColumnInfo> columns)
+        private static bool GetAutoIncrementStatus(SqlConnection connection, string tableName, Action<string> log, List<SqlColumnInfo> columns, SqlTransaction sqlTransaction = null)
         {
             // next get the auto increment step (increment in database) and seed
             string query = "SELECT [column].name, [column].is_identity, ident_incr([table].name) as identity_increment, ident_seed([table].name) as identity_seed " +
@@ -22,7 +22,7 @@ namespace SNORM
 
             SqlParameter tableNameParameter = new SqlParameter("@tableName", tableName);
 
-            object[][] results = SimpleSqlService.ExecuteQuery(connection, false, log, query, CommandType.Text, tableNameParameter);
+            object[][] results = SimpleSqlService.ExecuteQuery(connection, false, log, query, CommandType.Text, sqlTransaction, tableNameParameter);
 
             if (results == null)
             {
@@ -46,7 +46,7 @@ namespace SNORM
             return true;
         }
 
-        private static List<SqlColumnInfo> GetBasicColumnInformation(SqlConnection connection, string tableName, Action<string> log)
+        private static List<SqlColumnInfo> GetBasicColumnInformation(SqlConnection connection, string tableName, Action<string> log, SqlTransaction sqlTransaction = null)
         {
             List<SqlColumnInfo> columns = new List<SqlColumnInfo>();
 
@@ -54,7 +54,7 @@ namespace SNORM
 
             SqlParameter tableNameParameter = new SqlParameter("@tableName", tableName);
 
-            object[][] results = SimpleSqlService.ExecuteQuery(connection, false, log, query, CommandType.Text, tableNameParameter);
+            object[][] results = SimpleSqlService.ExecuteQuery(connection, false, log, query, CommandType.Text, sqlTransaction, tableNameParameter);
 
             if (results == null)
             {
@@ -86,7 +86,7 @@ namespace SNORM
             return columns;
         }
 
-        private static List<ForeignKey> GetForeignKeysForTable(SqlConnection connection, string tableSchema, string tableName, Action<string> log)
+        private static List<ForeignKey> GetForeignKeysForTable(SqlConnection connection, string tableSchema, string tableName, Action<string> log, SqlTransaction sqlTransaction = null)
         {
             string query = "SELECT KCU1.CONSTRAINT_SCHEMA AS FK_CONSTRAINT_SCHEMA, " +
                                   "KCU1.CONSTRAINT_NAME AS FK_CONSTRAINT_NAME, " +
@@ -120,7 +120,7 @@ namespace SNORM
             SqlParameter tableSchemaParameter = new SqlParameter("@tableSchema", tableSchema);
             SqlParameter tableNameParameter = new SqlParameter("@tableName", tableName);
 
-            object[][] results = SimpleSqlService.ExecuteQuery(connection, false, log, query, CommandType.Text, databaseNameParameter, tableSchemaParameter, tableNameParameter);
+            object[][] results = SimpleSqlService.ExecuteQuery(connection, false, log, query, CommandType.Text, sqlTransaction, databaseNameParameter, tableSchemaParameter, tableNameParameter);
 
             if (results == null)
             {
@@ -150,7 +150,7 @@ namespace SNORM
             return foreignKeys;
         }
 
-        private static bool GetPrimaryKeyStatus(SqlConnection connection, string tableSchema, string tableName, Action<string> log, List<SqlColumnInfo> columns)
+        private static bool GetPrimaryKeyStatus(SqlConnection connection, string tableSchema, string tableName, Action<string> log, List<SqlColumnInfo> columns, SqlTransaction sqlTransaction = null)
         {
             // next get if column is primary key (or part of multi-column primary key)
             string query = "SELECT kcu.COLUMN_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu " +
@@ -160,7 +160,7 @@ namespace SNORM
             SqlParameter tableNameParameter = new SqlParameter("@tableName", tableName);
             SqlParameter tableSchemaParameter = new SqlParameter("@tableSchema", tableSchema);
 
-            object[][] results = SimpleSqlService.ExecuteQuery(connection, false, log, query, CommandType.Text, tableSchemaParameter, tableNameParameter);
+            object[][] results = SimpleSqlService.ExecuteQuery(connection, false, log, query, CommandType.Text, sqlTransaction, tableSchemaParameter, tableNameParameter);
 
             if (results == null)
             {
@@ -221,8 +221,9 @@ namespace SNORM
         /// <param name="tableSchema">The schema that owns the table.</param>
         /// <param name="tableName">The table name to get column information about.</param>
         /// <param name="log">The method to call to write log messages to (only errors are logged).</param>
+        /// <param name="sqlTransaction">The transaction to assign to the command. Default is null.</param>
         /// <returns>A list of columns containing metadata about each column or null if an error occurred.</returns>
-        public static List<SqlColumnInfo> GetTableInformation(SqlConnection connection, string tableSchema, string tableName, Action<string> log)
+        public static List<SqlColumnInfo> GetTableInformation(SqlConnection connection, string tableSchema, string tableName, Action<string> log, SqlTransaction sqlTransaction = null)
         {
             SqlConnectionStringBuilder builder = new SqlConnectionStringBuilder(connection.ConnectionString);
 
@@ -235,7 +236,7 @@ namespace SNORM
             try
             {
                 List<SqlColumnInfo> columns = GetBasicColumnInformation(connection, tableName, log);
-                        
+
                 if (!GetAutoIncrementStatus(connection, tableName, log, columns))
                 {
                     return null;
@@ -274,7 +275,7 @@ namespace SNORM
 
                 return columns;
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
                 log($"An error occurred during GetTableInformation...{Environment.NewLine}{ex}");
 

@@ -273,7 +273,7 @@ namespace SNORM.ORM
             return query;
         }
 
-        private int GetColumnsAndCreateTvp<T>(List<T> instances, string createSchema, string typeSchema, bool includeAutoIncrementColumns, out Dictionary<string, Tuple<SqlColumnInfo, PropertyInfo>> columns)
+        private int GetColumnsAndCreateTvp<T>(List<T> instances, string createSchema, string typeSchema, bool includeAutoIncrementColumns, SqlTransaction transaction, out Dictionary<string, Tuple<SqlColumnInfo, PropertyInfo>> columns)
         {
             columns = new Dictionary<string, Tuple<SqlColumnInfo, PropertyInfo>>();
 
@@ -305,7 +305,7 @@ namespace SNORM.ORM
             // get column information
             try
             {
-                tempColumns = SqlInformationService.GetTableInformation(sqlConnection, typeSchema, typeName, ErrorLogAction);
+                tempColumns = SqlInformationService.GetTableInformation(sqlConnection, typeSchema, typeName, ErrorLogAction, transaction);
             }
             catch (Exception ex)
             {
@@ -457,7 +457,7 @@ namespace SNORM.ORM
 
             Dictionary<string, Tuple<SqlColumnInfo, PropertyInfo>> columns;
 
-            int returnValue = GetColumnsAndCreateTvp(instances, schema2, schema, true, out columns);
+            int returnValue = GetColumnsAndCreateTvp(instances, schema2, schema, true, transaction, out columns);
 
             if (returnValue == -1) return returnValue;
 
@@ -704,7 +704,7 @@ namespace SNORM.ORM
 
             Dictionary<string, Tuple<SqlColumnInfo, PropertyInfo>> columns;
 
-            int returnValue = GetColumnsAndCreateTvp(instances, schema2, schema, false, out columns);
+            int returnValue = GetColumnsAndCreateTvp(instances, schema2, schema, false, transaction, out columns);
 
             if (returnValue == -1) return returnValue;
 
@@ -961,7 +961,7 @@ namespace SNORM.ORM
 
             Dictionary<string, Tuple<SqlColumnInfo, PropertyInfo>> columns;
 
-            int returnValue = GetColumnsAndCreateTvp(instances, schema2, schema, true, out columns);
+            int returnValue = GetColumnsAndCreateTvp(instances, schema2, schema, true, transaction, out columns);
 
             if (returnValue == -1) return returnValue;
 

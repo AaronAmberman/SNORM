@@ -16,9 +16,10 @@ namespace SNORM
         /// <param name="log">The method to call to write log messages to (only errors are logged).</param>
         /// <param name="query">The Transact-SQL statement to execute.</param>
         /// <param name="commandType">The type of command.</param>
+        /// <param name="sqlTransaction">The transaction to assign to the command. Default is null.</param>
         /// <param name="parameters">Parameters, if any, for the Transact-SQL statement.</param>
         /// <returns>The number of rows affected or -1 if an error occurred.</returns>
-        public static int ExecuteNonQuery(SqlConnection connection, bool autoConnect, Action<string> log, string query, CommandType commandType, params SqlParameter[] parameters)
+        public static int ExecuteNonQuery(SqlConnection connection, bool autoConnect, Action<string> log, string query, CommandType commandType, SqlTransaction sqlTransaction = null, params SqlParameter[] parameters)
         {
             int returnValue = -1;
 
@@ -46,7 +47,8 @@ namespace SNORM
                         connection.Open();
                 }
 
-                transaction = connection.BeginTransaction();
+                if (sqlTransaction == null) transaction = connection.BeginTransaction();
+                else transaction = sqlTransaction;
 
                 SqlCommand command = new SqlCommand(query, connection, transaction)
                 {
@@ -62,11 +64,11 @@ namespace SNORM
 
                 command.Dispose();
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
                 transaction?.Rollback();
 
-                log($"An error occurred during ExecuteNonQuery...{Environment.NewLine}{ex}");
+                log($"An error occurred during ExecuteNonQueryL {ex.Message}");
             }
 
             transaction?.Dispose();
@@ -83,9 +85,10 @@ namespace SNORM
         /// <param name="log">The method to call to write log messages to (only errors are logged).</param>
         /// <param name="query">The Transact-SQL statement to execute.</param>
         /// <param name="commandType">The type of command.</param>
+        /// <param name="sqlTransaction">The transaction to assign to the command. Default is null.</param>
         /// <param name="parameters">Parameters, if any, for the Transact-SQL statement.</param>
         /// <returns>The results or null if an error occurred.</returns>
-        public static object[][] ExecuteQuery(SqlConnection connection, bool autoConnect, Action<string> log, string query, CommandType commandType, params SqlParameter[] parameters)
+        public static object[][] ExecuteQuery(SqlConnection connection, bool autoConnect, Action<string> log, string query, CommandType commandType, SqlTransaction sqlTransaction = null, params SqlParameter[] parameters)
         {
             try
             {
@@ -114,6 +117,8 @@ namespace SNORM
                     CommandType = commandType
                 };
 
+                if (sqlTransaction != null) command.Transaction = sqlTransaction;
+
                 if (parameters.Length > 0)
                     command.Parameters.AddRange(parameters);
 
@@ -123,11 +128,11 @@ namespace SNORM
 
                 if (reader.HasRows)
                 {
-                    while(reader.Read())
+                    while (reader.Read())
                     {
                         object[] row = new object[reader.FieldCount];
 
-                        for(int i = 0; i < reader.FieldCount; i++)
+                        for (int i = 0; i < reader.FieldCount; i++)
                         {
                             object value = reader.GetValue(i);
 
@@ -149,9 +154,9 @@ namespace SNORM
 
                 return rows.ToArray();
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
-                log($"An error occurred during ExecuteQuery...{Environment.NewLine}{ex}");
+                log($"An error occurred during ExecuteQuery: {ex.Message}");
 
                 return null;
             }
