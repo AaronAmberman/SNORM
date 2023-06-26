@@ -24,6 +24,7 @@ namespace SNORM
             int returnValue = -1;
 
             SqlTransaction transaction = null;
+            bool isTransactionProvided = sqlTransaction != null;
 
             try
             {
@@ -48,7 +49,7 @@ namespace SNORM
                 }
 
                 if (sqlTransaction == null) transaction = connection.BeginTransaction();
-                else transaction = sqlTransaction;
+                else isTransactionProvided = true;
 
                 SqlCommand command = new SqlCommand(query, connection, transaction)
                 {
@@ -60,7 +61,9 @@ namespace SNORM
 
                 returnValue = command.ExecuteNonQuery();
 
-                transaction.Commit();
+                // only commit the transaction if we started it, if it was passed in then do not commit it
+                if (!isTransactionProvided)
+                    transaction.Commit();
 
                 command.Dispose();
             }
@@ -71,7 +74,9 @@ namespace SNORM
                 log($"An error occurred during ExecuteNonQueryL {ex.Message}");
             }
 
-            transaction?.Dispose();
+            // only dispose the transaction if we started it, if it was passed in then do not dispose it
+            if (!isTransactionProvided)
+                transaction?.Dispose();
 
             if (autoConnect)
                 connection.Close();

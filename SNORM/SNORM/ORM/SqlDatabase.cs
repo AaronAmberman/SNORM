@@ -30,7 +30,7 @@ namespace SNORM.ORM
         /// <summary>Gets the current state of the connection.</summary>
         public ConnectionState ConnectionState => sqlConnection.State;
 
-        /// <summary>Gets or sets the error log action (logs errors).</summary>
+        /// <summary>Gets or sets the action to call to log an error.</summary>
         public Action<string> ErrorLogAction { get; set; }
 
         /// <summary>Gets the connection string.</summary>
@@ -55,9 +55,9 @@ namespace SNORM.ORM
 
             sqlConnection = new SqlConnection(builder.ConnectionString);
 
-            ErrorLogAction = (string errorMessage) => 
+            ErrorLogAction = (string message) => 
             {
-                Debug.WriteLine(errorMessage);
+                Debug.WriteLine(message);
             };
         }
 
@@ -72,284 +72,6 @@ namespace SNORM.ORM
             VerifyDisposed();
 
             return sqlConnection.BeginTransaction();
-        }
-
-        private void CreateTvpType(Type type, string createSchema, Dictionary<string, Tuple<SqlColumnInfo, PropertyInfo>> columnAndPropertyMetadata, bool includeAutoIncrementColumns, SqlTransaction sqlTransaction = null)
-        {
-            SqlTableAttribute sta = type.GetCustomAttribute<SqlTableAttribute>();
-
-            string typeName = sta == null ? type.Name : string.IsNullOrWhiteSpace(sta.TableName) ? type.Name : sta.TableName;
-            string schema = sta == null ? createSchema : string.IsNullOrWhiteSpace(sta.Schema) ? createSchema : sta.Schema;
-
-            string query = $"IF EXISTS(SELECT 1 FROM sys.types WHERE name = '{typeName}AsTvp' AND is_table_type = 1 AND schema_id = SCHEMA_ID('{schema}')) " +
-                $"DROP TYPE {schema}.{typeName}AsTvp;" +
-                $"CREATE TYPE {schema}.{typeName}AsTvp AS TABLE (";
-
-            foreach (KeyValuePair<string, Tuple<SqlColumnInfo, PropertyInfo>> kvp in columnAndPropertyMetadata)
-            {
-                if (!includeAutoIncrementColumns && kvp.Value.Item1.AutoIncrement)
-                    continue;
-
-                SqlColumnAttribute sca = kvp.Value.Item2.GetCustomAttribute<SqlColumnAttribute>();
-
-                string columnName = sca == null ? kvp.Value.Item1.Name : sca.ColumnName;
-
-                query += $"{columnName} {kvp.Value.Item1.Type}";
-
-                // if our column is of a data type that requires a length specification then we need to specifiy the length
-                if (kvp.Value.Item1.Type == SqlDbType.Char || kvp.Value.Item1.Type == SqlDbType.VarChar || kvp.Value.Item1.Type == SqlDbType.Text ||
-                    kvp.Value.Item1.Type == SqlDbType.NText || kvp.Value.Item1.Type == SqlDbType.NChar || kvp.Value.Item1.Type == SqlDbType.NVarChar ||
-                    kvp.Value.Item1.Type == SqlDbType.Binary || kvp.Value.Item1.Type == SqlDbType.VarBinary || kvp.Value.Item1.Type == SqlDbType.Image)
-                {
-                    query += $" ({kvp.Value.Item1.Length})";
-                }
-
-                query += ",";
-            }
-
-            query = query.Substring(0, query.Length - 1); // remove the last comma
-            query += ");";
-
-            SqlCommand command = new SqlCommand(query, sqlConnection);
-
-            if (sqlTransaction != null) command.Transaction = sqlTransaction;
-
-            command.ExecuteNonQuery();
-            command.Dispose();
-        }
-
-        private void Dispose(bool disposing)
-        {
-            if (!disposedValue)
-            {
-                if (disposing)
-                {
-                    sqlConnection.Dispose();
-                }
-
-                disposedValue = true;
-            }
-        }
-
-        private bool DropTvpType(Type type, string createSchema)
-        {
-            try
-            {
-                SqlTableAttribute sta = type.GetCustomAttribute<SqlTableAttribute>();
-
-                string typeName = sta == null ? type.Name : string.IsNullOrWhiteSpace(sta.TableName) ? type.Name : sta.TableName;
-                string schema = sta == null ? createSchema : string.IsNullOrWhiteSpace(sta.Schema) ? createSchema : sta.Schema;
-
-                string query = $"DROP TYPE {schema}.{typeName}AsTvp";
-
-                SqlCommand command = new SqlCommand(query, sqlConnection);
-
-                command.ExecuteNonQuery();
-                command.Dispose();
-
-                return true;
-            }
-            catch (Exception ex)
-            {
-                ErrorLogAction($"An error occurred attempting to drop TVP type: {ex.Message}");
-
-                return false;
-            }
-        }
-
-        private DataTable GenerateTvpDataTable<T>(List<T> instances, Dictionary<string, Tuple<SqlColumnInfo, PropertyInfo>> columnAndPropertyMetadata, bool includeAutoIncrementColumns)
-        {
-            DataTable dt = new DataTable();
-
-            foreach (KeyValuePair<string, Tuple<SqlColumnInfo, PropertyInfo>> kvp in columnAndPropertyMetadata)
-            {
-                if (!includeAutoIncrementColumns && kvp.Value.Item1.AutoIncrement) continue;
-
-                dt.Columns.Add(kvp.Key, kvp.Value.Item1.DotNetType);
-            }
-
-            foreach (T instance in instances)
-            {
-                // get values to add to this row
-                List<object> values = new List<object>();
-
-                foreach (KeyValuePair<string, Tuple<SqlColumnInfo, PropertyInfo>> kvp in columnAndPropertyMetadata)
-                {
-                    // we don't need to insert data into auto incremented columns
-                    if (!includeAutoIncrementColumns && kvp.Value.Item1.AutoIncrement) continue;
-
-                    values.Add(kvp.Value.Item2.GetValue(instance));
-                }
-
-                dt.Rows.Add(values.ToArray());
-            }
-
-            return dt;
-        }
-
-        private string GenerateInsertTvpQuery(Type type, string typeSchema, Dictionary<string, Tuple<SqlColumnInfo, PropertyInfo>> columns)
-        {
-            SqlTableAttribute sta = type.GetCustomAttribute<SqlTableAttribute>();
-
-            string typeName = sta == null ? type.Name : string.IsNullOrWhiteSpace(sta.TableName) ? type.Name : sta.TableName;
-            string schema = sta == null ? typeSchema : string.IsNullOrWhiteSpace(sta.Schema) ? typeSchema : sta.Schema;
-
-            string query = $"INSERT INTO {schema}.{typeName} (";
-
-            foreach (KeyValuePair<string, Tuple<SqlColumnInfo, PropertyInfo>> kvp in columns)
-            {
-                // we don't need to insert data into auto incremented columns
-                if (kvp.Value.Item1.AutoIncrement) continue;
-
-                SqlColumnAttribute sca = kvp.Value.Item2.GetCustomAttribute<SqlColumnAttribute>();
-
-                string columnName = sca == null ? kvp.Value.Item1.Name : sca.ColumnName;
-
-                query += $"{columnName},";
-            }
-
-            // remove the last comma
-            query = query.Substring(0, query.Length - 1);
-
-            query += ") SELECT ";
-
-            foreach (KeyValuePair<string, Tuple<SqlColumnInfo, PropertyInfo>> kvp in columns)
-            {
-                // we don't need to insert data into auto incremented columns
-                if (kvp.Value.Item1.AutoIncrement) continue;
-
-                SqlColumnAttribute sca = kvp.Value.Item2.GetCustomAttribute<SqlColumnAttribute>();
-
-                string columnName = sca == null ? kvp.Value.Item1.Name : sca.ColumnName;
-
-                query += $"tvp.{columnName},";
-            }
-
-            // remove the last comma
-            query = query.Substring(0, query.Length - 1);
-
-            query += " FROM @TVP AS tvp";
-
-            return query;
-        }
-
-        private string GenerateUpdateTvpQuery(Type type, string typeSchema, Dictionary<string, Tuple<SqlColumnInfo, PropertyInfo>> columns)
-        {
-            SqlTableAttribute sta = type.GetCustomAttribute<SqlTableAttribute>();
-
-            string typeName = sta == null ? type.Name : string.IsNullOrWhiteSpace(sta.TableName) ? type.Name : sta.TableName;
-            string schema = sta == null ? typeSchema : string.IsNullOrWhiteSpace(sta.Schema) ? typeSchema : sta.Schema;
-
-            string query = $"UPDATE {schema}.{typeName} SET ";
-
-            foreach (KeyValuePair<string, Tuple<SqlColumnInfo, PropertyInfo>> kvp in columns)
-            {
-                // we do not update auto incrementing columns
-                if (kvp.Value.Item1.AutoIncrement) continue;
-
-                SqlColumnAttribute sca = kvp.Value.Item2.GetCustomAttribute<SqlColumnAttribute>();
-
-                string columnName = sca == null ? kvp.Value.Item1.Name : sca.ColumnName;
-
-                query += $"{typeName}.{columnName} = tvp.{columnName},";
-            }
-
-            // remove the last comma
-            query = query.Substring(0, query.Length - 1);
-            query += $" FROM {typeName} INNER JOIN @tvp AS tvp ON ";
-
-            Dictionary<string, Tuple<SqlColumnInfo, PropertyInfo>> primaryKeyColumns = columns.Where(c => c.Value.Item1.IsPrimaryKey).ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
-
-            foreach (KeyValuePair<string, Tuple<SqlColumnInfo, PropertyInfo>> kvp in primaryKeyColumns)
-            {
-                SqlColumnAttribute sca = kvp.Value.Item2.GetCustomAttribute<SqlColumnAttribute>();
-
-                string columnName = sca == null ? kvp.Value.Item1.Name : sca.ColumnName;
-
-                query += $"{typeName}.{columnName} = tvp.{columnName} AND ";
-            }
-
-            // remove the last ' AND '
-            query = query.Substring(0, query.Length - 5);
-
-            return query;
-        }
-
-        private int GetColumnsAndCreateTvp<T>(List<T> instances, string createSchema, string typeSchema, bool includeAutoIncrementColumns, SqlTransaction transaction, out Dictionary<string, Tuple<SqlColumnInfo, PropertyInfo>> columns)
-        {
-            columns = new Dictionary<string, Tuple<SqlColumnInfo, PropertyInfo>>();
-
-            List<SqlColumnInfo> tempColumns = new List<SqlColumnInfo>();
-
-            if (instances == null)
-            {
-                ErrorLogAction("The collection of instances to delete cannot be null.");
-
-                return -1;
-            }
-
-            if (sqlConnection.State != ConnectionState.Open)
-            {
-                ErrorLogAction("There must be an open and not busy connection waiting. Please connect first by calling Connect.");
-
-                return -1;
-            }
-
-            Type type = typeof(T);
-            PropertyInfo[] publicProperties = type.GetProperties();
-            List<PropertyInfo> publicPropertiesWithAttributes = publicProperties.Where(pi => pi.GetCustomAttribute<SqlColumnAttribute>() != null).ToList();
-
-            SqlTableAttribute sta = type.GetCustomAttribute<SqlTableAttribute>();
-
-            string typeName = sta == null ? type.Name : string.IsNullOrWhiteSpace(sta.TableName) ? type.Name : sta.TableName;
-            string schema = sta == null ? typeSchema : string.IsNullOrWhiteSpace(sta.Schema) ? typeSchema : sta.Schema;
-
-            // get column information
-            try
-            {
-                tempColumns = SqlInformationService.GetTableInformation(sqlConnection, typeSchema, typeName, ErrorLogAction, transaction);
-            }
-            catch (Exception ex)
-            {
-                ErrorLogAction($"An error occurred attempting to get basic column information: {ex.Message}");
-
-                return -1;
-            }
-
-            // we need to check to see if we have an identity (auto-incremented) column, we require it
-            SqlColumnInfo primaryKeyAutoIncrementedColumn = tempColumns.FirstOrDefault(col => col.AutoIncrement && col.IsPrimaryKey);
-
-            if (primaryKeyAutoIncrementedColumn == null)
-            {
-                throw new InvalidOperationException("The referenced table in the database does not contain a primary key column that is an identity (auto-incremented). This API requires this.");
-            }
-
-            foreach (SqlColumnInfo col in tempColumns)
-            {
-                // first match off a custom attribute...if there one defined
-                PropertyInfo matchingPropertyInfo = publicPropertiesWithAttributes.FirstOrDefault(pi => pi.GetCustomAttribute<SqlColumnAttribute>().ColumnName.Equals(col.Name, StringComparison.OrdinalIgnoreCase));
-
-                // if not, match of the name of the property itself
-                if (matchingPropertyInfo == null)
-                    matchingPropertyInfo = publicProperties.FirstOrDefault(pi => pi.Name.Equals(col.Name, StringComparison.OrdinalIgnoreCase));
-
-                columns.Add(col.Name, new Tuple<SqlColumnInfo, PropertyInfo>(col, matchingPropertyInfo));
-            }
-
-            schema = sta == null ? createSchema : string.IsNullOrWhiteSpace(sta.Schema) ? createSchema : sta.Schema;
-
-            try
-            {
-                CreateTvpType(type, schema, columns, includeAutoIncrementColumns);
-            }
-            catch (Exception ex)
-            {
-                ErrorLogAction($"An error occurred attempting to create TVP type: {ex.Message}");
-
-                return -1;
-            }
-
-            return 0;
         }
 
         /// <summary>Attempts to connect to the database.</summary>
@@ -372,13 +94,86 @@ namespace SNORM.ORM
             }
         }
 
-        /// <summary>Deletes the objects from the database.</summary>
-        /// <typeparam name="T">The type of object to delete.</typeparam>
-        /// <param name="instances">The collection of objects to delete.</param>
-        /// <returns>The number of affected rows or -1 if an error occurred.</returns>
-        public int Delete<T>(List<T> instances)
+        /// <summary>Creates a tabled-value parameter (TVP) SQL type for the specified type. Call this prior to BeginTransaction, Delete, Insert, Select or Update but after Connect.</summary>
+        /// <param name="type">The type to create a TVP for.</param>
+        /// <returns>True if created otherwise false.</returns>
+        public bool CreateTvpType(Type type)
         {
-            return Delete(instances, "dbo", "dbo");
+            return CreateTvpType(type, true);
+        }
+
+        /// <summary>Creates a tabled-value parameter (TVP) SQL type for the specified type. Call this prior to BeginTransaction, Delete, Insert, Select or Update but after Connect.</summary>
+        /// <param name="type">The type to create a TVP for.</param>
+        /// <param name="includeAutoIncrementColumns">Whether or not to include auto increment columns from the table.</param>
+        /// <returns>True if created otherwise false.</returns>
+        public bool CreateTvpType(Type type, bool includeAutoIncrementColumns)
+        {
+            VerifyDisposed();
+
+            return CreateTvpType(type, GetSchemaFromType(type), includeAutoIncrementColumns);
+        }
+
+        /// <summary>Creates a tabled-value parameter (TVP) SQL type for the specified type. Call this prior to BeginTransaction, Delete, Insert, Select or Update but after Connect.</summary>
+        /// <param name="type">The type to create a TVP for.</param>
+        /// <param name="schema">The schema for the TVP type.</param>
+        /// <param name="includeAutoIncrementColumns">Whether or not to include auto increment columns from the table.</param>
+        /// <returns>True if created otherwise false.</returns>
+        public bool CreateTvpType(Type type, string schema, bool includeAutoIncrementColumns)
+        {
+            VerifyDisposed();
+
+            if (ConnectionState != ConnectionState.Open)
+            {
+                ErrorLogAction("There must be an open and not busy connection waiting. Please connect first by calling Connect.");
+
+                return false;
+            }
+
+            if (!DropTvpType(type, schema)) return false;
+
+            List<SqlColumn> columns = GetColumnInformation(type);
+            string typeName = GetTypeName(type);
+
+            string query = $"CREATE TYPE {schema}.{typeName}AsTvp AS TABLE (";
+
+            foreach (SqlColumn column in columns)
+            {
+                if (!includeAutoIncrementColumns && column.ColumnInfo.AutoIncrement) continue;
+
+                SqlColumnAttribute sca = column.PropertyInfo.GetCustomAttribute<SqlColumnAttribute>();
+
+                string columnName = sca == null ? column.ColumnName : sca.ColumnName;
+
+                query += $"{columnName} {column.ColumnInfo.Type}";
+
+                // if our column is of a data type that requires a length specification then we need to specifiy the length
+                if (column.ColumnInfo.Type == SqlDbType.Char || column.ColumnInfo.Type == SqlDbType.VarChar || column.ColumnInfo.Type == SqlDbType.Text ||
+                    column.ColumnInfo.Type == SqlDbType.NText || column.ColumnInfo.Type == SqlDbType.NChar || column.ColumnInfo.Type == SqlDbType.NVarChar ||
+                    column.ColumnInfo.Type == SqlDbType.Binary || column.ColumnInfo.Type == SqlDbType.VarBinary || column.ColumnInfo.Type == SqlDbType.Image)
+                {
+                    query += $" ({column.ColumnInfo.Length})";
+                }
+
+                query += ",";
+            }
+
+            query = query.Substring(0, query.Length - 1); // remove the last comma
+            query += ");";
+
+            try
+            {
+                SqlCommand command = new SqlCommand(query, sqlConnection);
+                command.ExecuteNonQuery();
+                command.Dispose();
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                ErrorLogAction($"An error occurred attempting to create TVP type: {ex.Message}");
+
+                return false;
+            }
         }
 
         /// <summary>Deletes the objects from the database.</summary>
@@ -387,18 +182,12 @@ namespace SNORM.ORM
         /// <param name="typeSchema">The schema which owns the table that is having data deleted from it.</param>
         /// <param name="createSchema">This procedure creates types in the database and as such this allows control of which schema those objects are created in.</param>
         /// <returns>The number of affected rows or -1 if an error occurred.</returns>
-        public int Delete<T>(List<T> instances, string typeSchema, string createSchema)
+        public int Delete<T>(List<T> instances)
         {
             VerifyDisposed();
 
             if (instances == null || instances.Count == 0)
                 throw new ArgumentNullException(nameof(instances));
-
-            if (string.IsNullOrWhiteSpace(typeSchema))
-                throw new ArgumentNullException(nameof(typeSchema));
-
-            if (string.IsNullOrWhiteSpace(createSchema))
-                throw new ArgumentNullException(nameof(createSchema));
 
             int returnValue;
             SqlTransaction transaction = null;
@@ -407,7 +196,7 @@ namespace SNORM.ORM
             {
                 transaction = sqlConnection.BeginTransaction();
 
-                returnValue = Delete<T>(instances, transaction, typeSchema, createSchema);
+                returnValue = Delete<T>(instances, transaction);
 
                 if (returnValue == -1) transaction.Rollback();
                 else transaction.Commit();
@@ -430,10 +219,8 @@ namespace SNORM.ORM
         /// <typeparam name="T">The type of object to delete.</typeparam>
         /// <param name="instances">The collection of objects to delete.</param>
         /// <param name="transaction">The SQL transaction to use for the query.</param>
-        /// <param name="typeSchema">The schema which owns the table that is having data deleted from it.</param>
-        /// <param name="createSchema">This procedure creates types in the database and as such this allows control of which schema those objects are created in.</param>
         /// <returns>The number of affected rows or -1 if an error occurred.</returns>
-        public int Delete<T>(List<T> instances, SqlTransaction transaction, string typeSchema, string createSchema)
+        public int Delete<T>(List<T> instances, SqlTransaction transaction)
         {
             VerifyDisposed();
 
@@ -443,36 +230,25 @@ namespace SNORM.ORM
             if (transaction == null)
                 throw new ArgumentNullException(nameof(transaction));
 
-            if (string.IsNullOrWhiteSpace(typeSchema))
-                throw new ArgumentNullException(nameof(typeSchema));
-
-            if (string.IsNullOrWhiteSpace(createSchema))
-                throw new ArgumentNullException(nameof(createSchema));
-
             Type type = typeof(T);
+            var schemaAndTypeName = GetSchemaAndTypeNameFromType(type);
 
-            SqlTableAttribute sta = type.GetCustomAttribute<SqlTableAttribute>();
+            List<SqlColumn> columns = GetColumnInformation(type);
 
-            string typeName = sta == null ? type.Name : string.IsNullOrWhiteSpace(sta.TableName) ? type.Name : sta.TableName;
-            string schema = sta == null ? typeSchema : string.IsNullOrWhiteSpace(sta.Schema) ? typeSchema : sta.Schema;
-            string schema2 = sta == null ? createSchema : string.IsNullOrWhiteSpace(sta.Schema) ? createSchema : sta.Schema;
+            if (columns == null || columns.Count == 0) return -1;
 
-            Dictionary<string, Tuple<SqlColumnInfo, PropertyInfo>> columns;
-
-            int returnValue = GetColumnsAndCreateTvp(instances, schema2, schema, true, transaction, out columns);
-
-            if (returnValue == -1) return returnValue;
+            int returnValue;
 
             try
             {
-                string query = $"DELETE FROM {schema}.{typeName} WHERE EXISTS (SELECT tvp.* FROM @tvp AS tvp)";
+                string query = $"DELETE FROM {schemaAndTypeName.Schema}.{schemaAndTypeName.TypeName} WHERE EXISTS (SELECT tvp.* FROM @tvp AS tvp)";
                 DataTable dt = GenerateTvpDataTable(instances, columns, true);
 
                 // setup command and execute query
                 SqlCommand command = new SqlCommand(query, sqlConnection, transaction);
                 command.Parameters.Add(new SqlParameter("@TVP", SqlDbType.Structured)
                 {
-                    TypeName = $"{schema2}.{typeName}AsTvp",
+                    TypeName = $"{schemaAndTypeName.Schema}.{schemaAndTypeName.TypeName}AsTvp",
                     Value = dt
                 });
 
@@ -487,9 +263,6 @@ namespace SNORM.ORM
                 returnValue = -1;
             }
 
-            if (!DropTvpType(type, schema2))
-                returnValue = -1;
-
             return returnValue;
         }
 
@@ -498,7 +271,27 @@ namespace SNORM.ORM
         {
             VerifyDisposed();
 
-            sqlConnection.Close();
+            try
+            {
+                sqlConnection.Close();
+            }
+            catch (Exception ex)
+            {
+                ErrorLogAction($"An error occurred during Disconnect: {ex.Message}");
+            }
+        }
+
+        private void Dispose(bool disposing)
+        {
+            if (!disposedValue)
+            {
+                if (disposing)
+                {
+                    sqlConnection.Dispose();
+                }
+
+                disposedValue = true;
+            }
         }
 
         /// <summary>Performs application-defined tasks associated with freeing, releasing, or resetting unmanaged and managed resources.</summary>
@@ -511,9 +304,58 @@ namespace SNORM.ORM
             GC.SuppressFinalize(this);
         }
 
+        /// <summary>Creates a tabled-value parameter (TVP) SQL type for the specified type.</summary>
+        /// <param name="type">The type to create a TVP for.</param>
+        /// <returns>True if created otherwise false.</returns>
+        public bool DropTvpType(Type type)
+        {
+            VerifyDisposed();
+
+            return DropTvpType(type, GetSchemaFromType(type));
+        }
+
+        /// <summary>Creates a tabled-value parameter (TVP) SQL type for the specified type.</summary>
+        /// <param name="type">The type to create a TVP for.</param>
+        /// <param name="schema">The schema for the TVP type.</param>
+        /// <returns>True if created otherwise false.</returns>
+        public bool DropTvpType(Type type, string schema)
+        {
+            VerifyDisposed();
+
+            string typeName = GetTypeName(type);
+
+            try
+            {
+                string query = $"IF EXISTS(SELECT 1 FROM sys.types WHERE name = @name AND is_table_type = 1 AND schema_id = SCHEMA_ID(@schemaName)) DROP TYPE {schema}.{typeName}AsTvp;";
+
+                SqlCommand command = new SqlCommand(query, sqlConnection);
+                command.Parameters.Add(new SqlParameter("@name", $"{typeName}AsTvp"));
+                command.Parameters.Add(new SqlParameter("@schemaName", schema));
+
+                command.ExecuteNonQuery();
+                command.Dispose();
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                ErrorLogAction($"An error occurred attempting to drop TVP type: {ex.Message}");
+
+                return false;
+            }
+        }
+
+        /// <summary>Executes a SQL statement against the connection and returns the number of rows affected or -1 if an error occurred.</summary>
+        /// <param name="query">The SQL statement to execute.</param>
+        /// <param name="commandType">The type of command.</param>
+        /// <param name="parameters">The parameters for the command.</param>
+        /// <returns>The number of rows affected or -1 if an error occurred.</returns>
         public int ExecuteNonQuery(string query, CommandType commandType, params SqlParameter[] parameters)
         {
             VerifyDisposed();
+
+            if (string.IsNullOrWhiteSpace(query))
+                throw new ArgumentNullException(nameof(query));
 
             SqlTransaction transaction = null;
             int returnValue;
@@ -542,9 +384,18 @@ namespace SNORM.ORM
             return returnValue;
         }
 
+        /// <summary>Executes a SQL statement against the connection and returns the number of rows affected or -1 if an error occurred.</summary>
+        /// <param name="transaction">The transaction the command is being executed in.</param>
+        /// <param name="query">The SQL statement to execute.</param>
+        /// <param name="commandType">The type of command.</param>
+        /// <param name="parameters">The parameters for the command.</param>
+        /// <returns>The number of rows affected or -1 if an error occurred.</returns>
         public int ExecuteNonQuery(SqlTransaction transaction, string query, CommandType commandType, params SqlParameter[] parameters)
         {
             VerifyDisposed();
+
+            if (string.IsNullOrWhiteSpace(query))
+                throw new ArgumentNullException(nameof(query));
 
             int returnValue;
 
@@ -568,9 +419,17 @@ namespace SNORM.ORM
             return returnValue;
         }
 
+        /// <summary>Executes a SQL statement against the connection and returns the results or null if an error occurred.</summary>
+        /// <param name="query">The SQL statement to execute</param>
+        /// <param name="commandType">The type of command.</param>
+        /// <param name="parameters">The parameters for the command.</param>
+        /// <returns>The results or null if an error occurred.</returns>
         public object[][] ExecuteQuery(string query, CommandType commandType, params SqlParameter[] parameters)
         {
             VerifyDisposed();
+
+            if (string.IsNullOrWhiteSpace(query))
+                throw new ArgumentNullException(nameof(query));
 
             try
             {
@@ -619,33 +478,216 @@ namespace SNORM.ORM
             }
         }
 
+        private DataTable GenerateTvpDataTable<T>(List<T> instances, List<SqlColumn> columns, bool includeAutoIncrementColumns)
+        {
+            DataTable dt = new DataTable();
+
+            foreach (SqlColumn column in columns)
+            {
+                if (!includeAutoIncrementColumns && column.ColumnInfo.AutoIncrement) continue;
+
+                dt.Columns.Add(column.ColumnName, column.ColumnInfo.DotNetType);
+            }
+
+            foreach (T instance in instances)
+            {
+                // get values to add to this row
+                List<object> values = new List<object>();
+
+                foreach (SqlColumn column in columns)
+                {
+                    if (!includeAutoIncrementColumns && column.ColumnInfo.AutoIncrement) continue;
+
+                    values.Add(column.PropertyInfo.GetValue(instance));
+                }
+
+                dt.Rows.Add(values.ToArray());
+            }
+
+            return dt;
+        }
+
+        private string GenerateInsertTvpQuery(Type type, List<SqlColumn> columns)
+        {
+            var schemaAndTypeName = GetSchemaAndTypeNameFromType(type);
+
+            string query = $"INSERT INTO {schemaAndTypeName.Schema}.{schemaAndTypeName.TypeName} (";
+
+            foreach (SqlColumn column in columns)
+            {
+                // we don't need to insert data into auto incremented columns
+                if (column.ColumnInfo.AutoIncrement) continue;
+
+                SqlColumnAttribute sca = column.PropertyInfo.GetCustomAttribute<SqlColumnAttribute>();
+
+                string columnName = sca == null ? column.ColumnName : sca.ColumnName;
+
+                query += $"{columnName},";
+            }
+
+            // remove the last comma
+            query = query.Substring(0, query.Length - 1);
+
+            query += ") SELECT ";
+
+            foreach (SqlColumn column in columns)
+            {
+                // we don't need to insert data into auto incremented columns
+                if (column.ColumnInfo.AutoIncrement) continue;
+
+                SqlColumnAttribute sca = column.PropertyInfo.GetCustomAttribute<SqlColumnAttribute>();
+
+                string columnName = sca == null ? column.ColumnName : sca.ColumnName;
+
+                query += $"tvp.{columnName},";
+            }
+
+            // remove the last comma
+            query = query.Substring(0, query.Length - 1);
+
+            query += " FROM @TVP AS tvp";
+
+            return query;
+        }
+
+        private string GenerateUpdateTvpQuery(Type type, List<SqlColumn> columns)
+        {
+            var schemaAndTypeName = GetSchemaAndTypeNameFromType(type);
+
+            string query = $"UPDATE {schemaAndTypeName.Schema} . {schemaAndTypeName.TypeName} SET ";
+
+            foreach (SqlColumn column in columns)
+            {
+                // we do not update auto incrementing columns
+                if (column.ColumnInfo.AutoIncrement) continue;
+
+                SqlColumnAttribute sca = column.PropertyInfo.GetCustomAttribute<SqlColumnAttribute>();
+
+                string columnName = sca == null ? column.ColumnName : sca.ColumnName;
+
+                query += $"{schemaAndTypeName.TypeName}.{columnName} = tvp.{columnName},";
+            }
+
+            // remove the last comma
+            query = query.Substring(0, query.Length - 1);
+            query += $" FROM {schemaAndTypeName.TypeName} INNER JOIN @tvp AS tvp ON ";
+
+            List<SqlColumn> primaryKeyColumns = columns.Where(c => c.ColumnInfo.IsPrimaryKey).ToList();
+
+            foreach (SqlColumn column in primaryKeyColumns)
+            {
+                SqlColumnAttribute sca = column.PropertyInfo.GetCustomAttribute<SqlColumnAttribute>();
+
+                string columnName = sca == null ? column.ColumnName : sca.ColumnName;
+
+                query += $"{schemaAndTypeName.TypeName}.{columnName} = tvp.{columnName} AND ";
+            }
+
+            // remove the last ' AND '
+            query = query.Substring(0, query.Length - 5);
+
+            return query;
+        }
+
+        private List<SqlColumn> GetColumnInformation(Type type, SqlTransaction transaction = null)
+        {
+            List<SqlColumn> columns = new List<SqlColumn>();
+
+            PropertyInfo[] publicProperties = type.GetProperties();
+            List<PropertyInfo> publicPropertiesWithAttributes = publicProperties.Where(pi => pi.GetCustomAttribute<SqlColumnAttribute>() != null).ToList();
+
+            List<SqlColumnInfo> tempColumns = GetTableInformation(type, transaction);
+
+            if (tempColumns == null || tempColumns.Count == 0) return null;
+
+            // we need to check to see if we have an identity (auto-incremented) column, we require it
+            SqlColumnInfo primaryKeyAutoIncrementedColumn = tempColumns.FirstOrDefault(col => col.AutoIncrement && col.IsPrimaryKey);
+
+            if (primaryKeyAutoIncrementedColumn == null)
+            {
+                throw new InvalidOperationException("The referenced table in the database does not contain a primary key column that is an identity (auto-incremented). This API requires this.");
+            }
+
+            foreach (SqlColumnInfo col in tempColumns)
+            {
+                // first match off a custom attribute...if there one defined
+                PropertyInfo matchingPropertyInfo = publicPropertiesWithAttributes.FirstOrDefault(pi => pi.GetCustomAttribute<SqlColumnAttribute>().ColumnName.Equals(col.Name, StringComparison.OrdinalIgnoreCase));
+
+                // if not, match of the name of the property itself
+                if (matchingPropertyInfo == null)
+                    matchingPropertyInfo = publicProperties.FirstOrDefault(pi => pi.Name.Equals(col.Name, StringComparison.OrdinalIgnoreCase));
+
+                columns.Add(new SqlColumn
+                {
+                    ColumnName = col.Name,
+                    ColumnInfo = col,
+                    PropertyInfo =  matchingPropertyInfo
+                });
+            }
+
+            return columns;
+        }
+
+        private string GetSchemaFromType(Type type)
+        {
+            SqlTableAttribute sta = type.GetCustomAttribute<SqlTableAttribute>();
+
+            string schema = sta == null ? DEFAULT_SCHEMA : string.IsNullOrWhiteSpace(sta.Schema) ? DEFAULT_SCHEMA : sta.Schema;
+
+            return schema;
+        }
+
+        private (string Schema, string TypeName) GetSchemaAndTypeNameFromType(Type type)
+        {
+            SqlTableAttribute sta = type.GetCustomAttribute<SqlTableAttribute>();
+
+            string typeName = sta == null ? type.Name : string.IsNullOrWhiteSpace(sta.TableName) ? type.Name : sta.TableName;
+            string schema = sta == null ? DEFAULT_SCHEMA : string.IsNullOrWhiteSpace(sta.Schema) ? DEFAULT_SCHEMA : sta.Schema;
+
+            return (schema, typeName);
+        }
+
+        private List<SqlColumnInfo> GetTableInformation(Type type, SqlTransaction sqlTransaction = null)
+        {
+            try
+            {
+                SqlTableAttribute sta = type.GetCustomAttribute<SqlTableAttribute>();
+
+                string typeName = sta == null ? type.Name : string.IsNullOrWhiteSpace(sta.TableName) ? type.Name : sta.TableName;
+                string schema = sta == null ? DEFAULT_SCHEMA : string.IsNullOrWhiteSpace(sta.Schema) ? DEFAULT_SCHEMA : sta.Schema;
+
+                List<SqlColumnInfo> tempColumns = 
+                    SqlInformationService.GetTableInformation(sqlConnection, schema, typeName, ErrorLogAction, sqlTransaction);
+
+                return tempColumns;
+            }
+            catch (Exception ex)
+            {
+                ErrorLogAction($"An error occurred attempting to get table information: {ex.Message}");
+
+                return null;
+            }
+        }
+
+        private string GetTypeName(Type type)
+        {
+            SqlTableAttribute sta = type.GetCustomAttribute<SqlTableAttribute>();
+
+            string typeName = sta == null ? type.Name : string.IsNullOrWhiteSpace(sta.TableName) ? type.Name : sta.TableName;
+
+            return typeName;
+        }
+
         /// <summary>Inserts the objects into the database.</summary>
         /// <typeparam name="T">The type of object to insert.</typeparam>
         /// <param name="instances">The collection of objects to insert.</param>
         /// <returns>The number of affected rows or -1 if an error occurred.</returns>
         public int Insert<T>(List<T> instances)
         {
-            return Insert(instances, "dbo", "dbo");
-        }
-
-        /// <summary>Inserts the objects into the database.</summary>
-        /// <typeparam name="T">The type of object to insert.</typeparam>
-        /// <param name="instances">The collection of objects to insert.</param>
-        /// <param name="typeSchema">The schema which owns the table that is having data inserted into.</param>
-        /// <param name="createSchema">This procedure creates types in the database and as such this allows control of which schema those objects are created in.</param>
-        /// <returns>The number of affected rows or -1 if an error occurred.</returns>
-        public int Insert<T>(List<T> instances, string typeSchema, string createSchema)
-        {
             VerifyDisposed();
 
             if (instances == null || instances.Count == 0)
                 throw new ArgumentNullException(nameof(instances));
-
-            if (string.IsNullOrWhiteSpace(typeSchema))
-                throw new ArgumentNullException(nameof(typeSchema));
-
-            if (string.IsNullOrWhiteSpace(createSchema))
-                throw new ArgumentNullException(nameof(createSchema));
 
             int returnValue;
             SqlTransaction transaction = null;
@@ -654,7 +696,7 @@ namespace SNORM.ORM
             {
                 transaction = sqlConnection.BeginTransaction();
 
-                returnValue = Insert<T>(instances, transaction, typeSchema, createSchema);
+                returnValue = Insert<T>(instances, transaction);
 
                 if (returnValue == -1) transaction.Rollback();
                 else transaction.Commit();
@@ -677,10 +719,8 @@ namespace SNORM.ORM
         /// <typeparam name="T">The type of object to insert.</typeparam>
         /// <param name="instances">The collection of objects to insert.</param>
         /// <param name="transaction">The SQL transaction to use for the query.</param>
-        /// <param name="typeSchema">The schema which owns the table that is having data inserted into.</param>
-        /// <param name="createSchema">This procedure creates types in the database and as such this allows control of which schema those objects are created in.</param>
         /// <returns>The number of affected rows or -1 if an error occurred.</returns>
-        public int Insert<T>(List<T> instances, SqlTransaction transaction, string typeSchema, string createSchema)
+        public int Insert<T>(List<T> instances, SqlTransaction transaction)
         {
             VerifyDisposed();
 
@@ -690,36 +730,26 @@ namespace SNORM.ORM
             if (transaction == null)
                 throw new ArgumentNullException(nameof(transaction));
 
-            if (string.IsNullOrWhiteSpace(typeSchema))
-                throw new ArgumentNullException(nameof(typeSchema));
-
-            if (string.IsNullOrWhiteSpace(createSchema))
-                throw new ArgumentNullException(nameof(createSchema));
-
             Type type = typeof(T);
 
-            SqlTableAttribute sta = type.GetCustomAttribute<SqlTableAttribute>();
+            var schemaAndTypeName = GetSchemaAndTypeNameFromType(type);
 
-            string typeName = sta == null ? type.Name : string.IsNullOrWhiteSpace(sta.TableName) ? type.Name : sta.TableName;
-            string schema = sta == null ? typeSchema : string.IsNullOrWhiteSpace(sta.Schema) ? typeSchema : sta.Schema;
-            string schema2 = sta == null ? createSchema : string.IsNullOrWhiteSpace(sta.Schema) ? createSchema : sta.Schema;
+            List<SqlColumn> columns = GetColumnInformation(type);
 
-            Dictionary<string, Tuple<SqlColumnInfo, PropertyInfo>> columns;
+            if (columns == null || columns.Count == 0) return -1;
 
-            int returnValue = GetColumnsAndCreateTvp(instances, schema2, schema, false, transaction, out columns);
-
-            if (returnValue == -1) return returnValue;
+            int returnValue;
 
             try
             {
-                string query = GenerateInsertTvpQuery(type, schema, columns);
+                string query = GenerateInsertTvpQuery(type, columns);
                 DataTable dt = GenerateTvpDataTable(instances, columns, false);
 
                 // setup command and execute query
                 SqlCommand command = new SqlCommand(query, sqlConnection, transaction);
                 command.Parameters.Add(new SqlParameter("@TVP", SqlDbType.Structured)
                 {
-                    TypeName = $"{schema2}.{typeName}AsTvp",
+                    TypeName = $"{schemaAndTypeName.Schema}.{schemaAndTypeName.TypeName}AsTvp",
                     Value = dt
                 });
 
@@ -734,9 +764,6 @@ namespace SNORM.ORM
                 returnValue = -1;
             }
 
-            if (!DropTvpType(type, schema2))
-                returnValue = -1;
-
             return returnValue;
         }
 
@@ -750,11 +777,9 @@ namespace SNORM.ORM
 
             Type type = typeof(T);
 
-            SqlTableAttribute sta = type.GetCustomAttribute<SqlTableAttribute>();
+            var schemaAndTypeName = GetSchemaAndTypeNameFromType(type);
 
-            string typeName = sta == null ? type.Name : string.IsNullOrWhiteSpace(sta.TableName) ? type.Name : sta.TableName;
-
-            string query = $"SELECT * FROM {typeName}";
+            string query = $"SELECT * FROM {schemaAndTypeName.Schema}.{schemaAndTypeName.TypeName}";
 
             return Select<T>(query, CommandType.Text);
         }
@@ -882,36 +907,19 @@ namespace SNORM.ORM
         /// <returns>The number of affected rows or -1 if an error occurred.</returns>
         public int Update<T>(List<T> instances)
         {
-            return Update(instances, "dbo", "dbo");
-        }
-
-        /// <summary>Updates objects in the database.</summary>
-        /// <typeparam name="T">The type of object to update.</typeparam>
-        /// <param name="instances">The collection of objects to update.</param>
-        /// <param name="typeSchema">The schema which owns the table that is having data updated.</param>
-        /// <param name="createSchema">This procedure creates types in the database and as such this allows control of which schema those objects are created in.</param>
-        /// <returns>The number of affected rows or -1 if an error occurred.</returns>
-        public int Update<T>(List<T> instances, string typeSchema, string createSchema)
-        {
             VerifyDisposed();
 
             if (instances == null || instances.Count == 0)
                 throw new ArgumentNullException(nameof(instances));
 
-            if (string.IsNullOrWhiteSpace(typeSchema))
-                throw new ArgumentNullException(nameof(typeSchema));
-
-            if (string.IsNullOrWhiteSpace(createSchema))
-                throw new ArgumentNullException(nameof(createSchema));
-
-            int returnValue = -1;
+            int returnValue;
             SqlTransaction transaction = null;
 
             try
             {
                 transaction = sqlConnection.BeginTransaction();
 
-                returnValue = Update<T>(instances, transaction, typeSchema, createSchema);
+                returnValue = Update<T>(instances, transaction);
 
                 if (returnValue == -1) transaction.Rollback();
                 else transaction.Commit();
@@ -934,10 +942,8 @@ namespace SNORM.ORM
         /// <typeparam name="T">The type of object to update.</typeparam>
         /// <param name="instances">The collection of objects to update.</param>
         /// <param name="transaction">The SQL transaction to use for the query.</param>
-        /// <param name="typeSchema">The schema which owns the table that is having data updated.</param>
-        /// <param name="createSchema">This procedure creates types in the database and as such this allows control of which schema those objects are created in.</param>
         /// <returns>The number of affected rows or -1 if an error occurred.</returns>
-        public int Update<T>(List<T> instances, SqlTransaction transaction, string typeSchema, string createSchema)
+        public int Update<T>(List<T> instances, SqlTransaction transaction)
         {
             VerifyDisposed();
 
@@ -947,36 +953,26 @@ namespace SNORM.ORM
             if (transaction == null)
                 throw new ArgumentNullException(nameof(transaction));
 
-            if (string.IsNullOrWhiteSpace(typeSchema))
-                throw new ArgumentNullException(nameof(typeSchema));
-
-            if (string.IsNullOrWhiteSpace(createSchema))
-                throw new ArgumentNullException(nameof(createSchema));
-
             Type type = typeof(T);
 
-            SqlTableAttribute sta = type.GetCustomAttribute<SqlTableAttribute>();
+            var schemaAndTypeName = GetSchemaAndTypeNameFromType(type);
 
-            string typeName = sta == null ? type.Name : string.IsNullOrWhiteSpace(sta.TableName) ? type.Name : sta.TableName;
-            string schema = sta == null ? typeSchema : string.IsNullOrWhiteSpace(sta.Schema) ? typeSchema : sta.Schema;
-            string schema2 = sta == null ? createSchema : string.IsNullOrWhiteSpace(sta.Schema) ? createSchema : sta.Schema;
+            List<SqlColumn> columns = GetColumnInformation(type);
 
-            Dictionary<string, Tuple<SqlColumnInfo, PropertyInfo>> columns;
+            if (columns == null || columns.Count == 0) return -1;
 
-            int returnValue = GetColumnsAndCreateTvp(instances, schema2, schema, true, transaction, out columns);
-
-            if (returnValue == -1) return returnValue;
+            int returnValue;
 
             try
             {
-                string query = GenerateUpdateTvpQuery(type, schema, columns);
+                string query = GenerateUpdateTvpQuery(type, columns);
                 DataTable dt = GenerateTvpDataTable(instances, columns, true);
 
                 // setup command and execute query
                 SqlCommand command = new SqlCommand(query, sqlConnection, transaction);
                 command.Parameters.Add(new SqlParameter("@TVP", SqlDbType.Structured)
                 {
-                    TypeName = $"{schema2}.{typeName}AsTvp",
+                    TypeName = $"{schemaAndTypeName.Schema} . {schemaAndTypeName.TypeName}AsTvp",
                     Value = dt
                 });
 
@@ -991,9 +987,6 @@ namespace SNORM.ORM
                 returnValue = -1;
             }
 
-            if (!DropTvpType(type, schema2))
-                returnValue = -1;
-
             return returnValue;
         }
 
@@ -1002,6 +995,22 @@ namespace SNORM.ORM
             if (disposedValue)
                 throw new ObjectDisposedException("Solis.Database.Sql.ORM.SqlDatabase", $"{caller} cannot be accessed because the object instance has been disposed.");
         }
+
+        #endregion
+
+        #region Private Classes
+
+        private class SqlColumn
+        {
+            #region Properties
+
+            public string ColumnName { get; set; }
+            public SqlColumnInfo ColumnInfo { get; set; }
+            public PropertyInfo PropertyInfo { get; set; }
+
+            #endregion
+        }
+
         #endregion
     }
 }

@@ -45,8 +45,10 @@
     <Compile Include="IConnectableDataSource.cs" />
     <Compile Include="IDatabase.cs" />
     <Compile Include="IDataSource.cs" />
+    <Compile Include="IManagedDatabase.cs" />
     <Compile Include="ORM\SqlColumnAttribute.cs" />
     <Compile Include="ORM\SqlDatabase.cs" />
+    <Compile Include="ORM\SqlManagedDatabase.cs" />
     <Compile Include="ORM\SqlTableAttribute.cs" />
     <Compile Include="SimpleSqlService.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
