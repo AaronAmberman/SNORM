@@ -813,6 +813,18 @@ namespace SNORM.ORM
         public List<T> Select<T>(string query, CommandType commandType, params SqlParameter[] parameters)
              where T : class, new()
         {
+            return Select<T>(null, query, commandType, parameters);
+        }
+
+        /// <summary>Selects objects from the database and maps the results to the instances of type T.</summary>
+        /// <typeparam name="T">The type of object to map the results to.</typeparam>
+        /// <param name="transaction">The SQL transaction to use for the query.</param>
+        /// <param name="query">The Transact-SQL statement to execute.</param>
+        /// <param name="commandType">The type of command.</param>
+        /// <param name="parameters">Parameters, if any, for the Transact-SQL statement.</param>
+        /// <returns>A list of instances of type T returned by the query or null if an error occurred.</returns>
+        public List<T> Select<T>(SqlTransaction transaction, string query, CommandType commandType, params SqlParameter[] parameters) where T : class, new()
+        {
             VerifyDisposed();
 
             if (string.IsNullOrEmpty(query))
@@ -841,6 +853,8 @@ namespace SNORM.ORM
                 {
                     CommandType = commandType
                 };
+
+                if (transaction != null) command.Transaction = transaction;
 
                 if (parameters.Length > 0)
                     command.Parameters.AddRange(parameters);
