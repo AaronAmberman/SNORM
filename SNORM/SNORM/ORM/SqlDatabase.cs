@@ -97,6 +97,7 @@ namespace SNORM.ORM
         /// <summary>Creates a tabled-value parameter (TVP) SQL type for the specified type. Call this prior to BeginTransaction, Delete, Insert, Select or Update but after Connect.</summary>
         /// <param name="type">The type to create a TVP for.</param>
         /// <returns>True if created otherwise false.</returns>
+        /// <remarks>Use for Deletes and Updates only.</remarks>
         public bool CreateTvpType(Type type)
         {
             return CreateTvpType(type, true);
@@ -106,6 +107,7 @@ namespace SNORM.ORM
         /// <param name="type">The type to create a TVP for.</param>
         /// <param name="includeAutoIncrementColumns">Whether or not to include auto increment columns from the table.</param>
         /// <returns>True if created otherwise false.</returns>
+        /// <remarks>For Deletes and Updates use auto increment columns, do not for Inserts.</remarks>
         public bool CreateTvpType(Type type, bool includeAutoIncrementColumns)
         {
             VerifyDisposed();
@@ -116,8 +118,9 @@ namespace SNORM.ORM
         /// <summary>Creates a tabled-value parameter (TVP) SQL type for the specified type. Call this prior to BeginTransaction, Delete, Insert, Select or Update but after Connect.</summary>
         /// <param name="type">The type to create a TVP for.</param>
         /// <param name="schema">The schema for the TVP type.</param>
-        /// <param name="includeAutoIncrementColumns">Whether or not to include auto increment columns from the table.</param>
+        /// <param name="includeAutoIncrementColumns">Whether or not to include auto increment columns from the table.</param>        
         /// <returns>True if created otherwise false.</returns>
+        /// <remarks>For Deletes and Updates use auto increment columns, do not for Inserts.</remarks>
         public bool CreateTvpType(Type type, string schema, bool includeAutoIncrementColumns)
         {
             VerifyDisposed();
