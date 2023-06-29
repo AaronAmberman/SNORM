@@ -58,6 +58,14 @@ namespace SNORM
         /// <returns>The number of rows affected or -1 if an error occurred.</returns>
         int ExecuteNonQuery(SqlTransaction transaction, string query, CommandType commandType, params SqlParameter[] parameters);
 
+        /// <summary>Executes a SQL statement against the connection and returns the results or null if an error occurred.</summary>
+        /// <param name="transaction">The transaction to use for the command.</param>
+        /// <param name="query">The SQL statement to execute</param>
+        /// <param name="commandType">The type of command.</param>
+        /// <param name="parameters">The parameters for the command.</param>
+        /// <returns>The results or null if an error occurred.</returns>
+        object[][] ExecuteQuery(SqlTransaction transaction, string query, CommandType commandType, params SqlParameter[] parameters);
+
         /// <summary>Inserts the objects into the database.</summary>
         /// <typeparam name="T">The type of object to insert.</typeparam>
         /// <param name="instances">The collection of objects to insert.</param>

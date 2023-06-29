@@ -405,8 +405,10 @@ namespace SNORM.ORM
             try
             {
                 // setup command and execute query
-                SqlCommand command = new SqlCommand(query, sqlConnection, transaction);
+                SqlCommand command = new SqlCommand(query, sqlConnection);
                 command.Parameters.AddRange(parameters);
+
+                if (transaction != null) command.Transaction = transaction;
 
                 returnValue = command.ExecuteNonQuery();
 
@@ -429,6 +431,17 @@ namespace SNORM.ORM
         /// <returns>The results or null if an error occurred.</returns>
         public object[][] ExecuteQuery(string query, CommandType commandType, params SqlParameter[] parameters)
         {
+            return ExecuteQuery(null, query, commandType, parameters);
+        }
+
+        /// <summary>Executes a SQL statement against the connection and returns the results or null if an error occurred.</summary>
+        /// <param name="transaction">The transaction to use for the command.</param>
+        /// <param name="query">The SQL statement to execute</param>
+        /// <param name="commandType">The type of command.</param>
+        /// <param name="parameters">The parameters for the command.</param>
+        /// <returns>The results or null if an error occurred.</returns>
+        public object[][] ExecuteQuery(SqlTransaction transaction, string query, CommandType commandType, params SqlParameter[] parameters)
+        {
             VerifyDisposed();
 
             if (string.IsNullOrWhiteSpace(query))
@@ -440,6 +453,8 @@ namespace SNORM.ORM
                 {
                     CommandType = commandType
                 };
+
+                if (transaction != null) command.Transaction = transaction;
 
                 if (parameters.Length > 0)
                     command.Parameters.AddRange(parameters);
