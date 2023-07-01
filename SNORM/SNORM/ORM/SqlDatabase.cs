@@ -405,7 +405,10 @@ namespace SNORM.ORM
             try
             {
                 // setup command and execute query
-                SqlCommand command = new SqlCommand(query, sqlConnection);
+                SqlCommand command = new SqlCommand(query, sqlConnection)
+                {
+                    CommandType = commandType
+                };
                 command.Parameters.AddRange(parameters);
 
                 if (transaction != null) command.Transaction = transaction;
