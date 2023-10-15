@@ -3,8 +3,28 @@
   <PropertyGroup>
     <TargetFramework>net6.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
+    <Nullable>disable</Nullable>
+    <Title>SNORM</Title>
+    <Description>A simple .NET object relational mapper.</Description>
+    <Copyright>© Aaron Amberman 2023</Copyright>
+    <PackageProjectUrl>https://github.com/AaronAmberman/SNORM</PackageProjectUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RepositoryUrl>https://github.com/AaronAmberman/SNORM</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>.NET ORM, .NET Object Relational Mapper, ORM, C# ORM, .NET Database, C# Database</PackageTags>
+    <PackageLicenseFile>LICENSE</PackageLicenseFile>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\..\LICENSE">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
+    <None Include="..\..\..\README.md">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="System.Data.SqlClient" Version="4.8.5" />
