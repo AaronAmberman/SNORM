@@ -13,6 +13,7 @@
     <RepositoryType>git</RepositoryType>
     <PackageTags>.NET ORM, .NET Object Relational Mapper, ORM, C# ORM, .NET Database, C# Database</PackageTags>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
+    <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
   </PropertyGroup>
 
   <ItemGroup>
