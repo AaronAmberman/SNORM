@@ -14,7 +14,8 @@
     <PackageTags>.NET ORM, .NET Object Relational Mapper, ORM, C# ORM, .NET Database, C# Database</PackageTags>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
     <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
-    <Version>1.0.2</Version>
+    <Version>1.0.3</Version>
+    <Authors>Aaron Amberman</Authors>
   </PropertyGroup>
 
   <ItemGroup>
