@@ -11,10 +11,10 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <RepositoryUrl>https://github.com/AaronAmberman/SNORM</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
-    <PackageTags>.NET ORM, .NET Object Relational Mapper, ORM, C# ORM, .NET Database, C# Database</PackageTags>
+    <PackageTags>.NET ORM;.NET Object Relational Mapper;ORM;C# ORM;.NET Database;C# Database</PackageTags>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
     <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
-    <Version>1.0.3</Version>
+    <Version>1.0.4</Version>
     <Authors>Aaron Amberman</Authors>
   </PropertyGroup>
 
