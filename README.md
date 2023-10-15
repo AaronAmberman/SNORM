@@ -5,7 +5,7 @@ Simple .NET Object Relational Mapper (SNORM)
 This SQL API only works with Mircosoft SQL Server as it requires the use of table-valued parameters (TVP's).
 
 ## Users Table
-![image](https://github.com/AaronAmberman/SNORM/assets/23512394/b7f552bf-1872-461b-9e3d-d803eba86aba)
+![image](https://user-images.githubusercontent.com/23512394/275332705-b7f552bf-1872-461b-9e3d-d803eba86aba.png)
 
 This is the simple user table I will reference in this article.
 
